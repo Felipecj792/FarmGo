@@ -9,6 +9,7 @@ function showScreen(id) {
   updateCartBadges();
   if (id === 'profile' || id === 'profile-edit' || id === 'profile-addresses' || id === 'profile-notifs') updateProfileUI();
   if (id === 'orders') renderOrdersList('active');
+  if (id === 'tracking' && trackMap) setTimeout(() => trackMap.invalidateSize(), 200);
   if (id === 'prescription') renderRxHistory();
   if (id === 'pharmacy-dashboard') refreshPharmacyFromOrders();
   if (id === 'driver-dashboard') refreshDriverFromOrders();
@@ -1326,7 +1327,214 @@ function advanceOrderStatus(orderId, status) {
   refreshDriverFromOrders();
 }
 
+// ==================== MAPA (Leaflet + OpenStreetMap) ====================
+let trackMap = null;
+let trackMarkers = { pharmacy: null, driver: null, customer: null };
+let trackRouteLine = null;
+let driverAnimTimer = null;
+
+const DEFAULT_PHARMACY = { lat: -23.561414, lng: -46.655881 }; // Av. Paulista
+const DEFAULT_CUSTOMER = { lat: -23.5575, lng: -46.6625 };
+
+function createMapIcon(emoji, bg) {
+  return L.divIcon({
+    className: 'farmgo-marker',
+    html: `<div style="
+      background:${bg};
+      width:36px;height:36px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:18px;border:2px solid #fff;
+      box-shadow:0 2px 8px rgba(0,0,0,.25);">${emoji}</div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
+  });
+}
+
+function ensureTrackMap() {
+  const el = document.getElementById('track-map');
+  if (!el || typeof L === 'undefined') return null;
+
+  if (trackMap) {
+    setTimeout(() => trackMap.invalidateSize(), 100);
+    return trackMap;
+  }
+
+  trackMap = L.map(el, {
+    zoomControl: true,
+    attributionControl: true
+  }).setView([DEFAULT_PHARMACY.lat, DEFAULT_PHARMACY.lng], 14);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(trackMap);
+
+  setTimeout(() => trackMap.invalidateSize(), 200);
+  return trackMap;
+}
+
+async function geocodeAddress(address) {
+  if (!address) return null;
+  const q = [address.street, address.number, address.neighborhood, address.city, address.state, 'Brasil']
+    .filter(Boolean)
+    .join(', ');
+  const cacheKey = 'farmgo_geo_' + q;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (_) {}
+
+  try {
+    const url =
+      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+      encodeURIComponent(q);
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' }
+    });
+    const data = await res.json();
+    if (data && data[0]) {
+      const point = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(point));
+      } catch (_) {}
+      return point;
+    }
+  } catch (e) {
+    console.warn('geocode:', e);
+  }
+  return null;
+}
+
+function clearDriverAnimation() {
+  if (driverAnimTimer) {
+    clearInterval(driverAnimTimer);
+    driverAnimTimer = null;
+  }
+}
+
+function animateDriver(from, to, durationMs) {
+  clearDriverAnimation();
+  if (!trackMarkers.driver || !from || !to) return;
+
+  const start = Date.now();
+  driverAnimTimer = setInterval(() => {
+    const t = Math.min(1, (Date.now() - start) / durationMs);
+    const lat = from.lat + (to.lat - from.lat) * t;
+    const lng = from.lng + (to.lng - from.lng) * t;
+    trackMarkers.driver.setLatLng([lat, lng]);
+    if (t >= 1) clearDriverAnimation();
+  }, 200);
+}
+
+async function updateTrackingMap(order) {
+  const hint = document.getElementById('track-map-hint');
+  const map = ensureTrackMap();
+  if (!map) {
+    if (hint) hint.textContent = 'Mapa indisponível offline.';
+    return;
+  }
+
+  if (hint) hint.textContent = 'Localizando no mapa…';
+
+  const pharmacy = DEFAULT_PHARMACY;
+  let customer = await geocodeAddress(order.address);
+  if (!customer) {
+    // offset demo near pharmacy if geocode fails
+    customer = {
+      lat: DEFAULT_CUSTOMER.lat,
+      lng: DEFAULT_CUSTOMER.lng
+    };
+  }
+
+  // Remove old layers
+  ['pharmacy', 'driver', 'customer'].forEach(k => {
+    if (trackMarkers[k]) {
+      map.removeLayer(trackMarkers[k]);
+      trackMarkers[k] = null;
+    }
+  });
+  if (trackRouteLine) {
+    map.removeLayer(trackRouteLine);
+    trackRouteLine = null;
+  }
+  clearDriverAnimation();
+
+  trackMarkers.pharmacy = L.marker([pharmacy.lat, pharmacy.lng], {
+    icon: createMapIcon('💊', '#F97316')
+  })
+    .addTo(map)
+    .bindPopup('Farmácia');
+
+  trackMarkers.customer = L.marker([customer.lat, customer.lng], {
+    icon: createMapIcon('🏠', '#2563EB')
+  })
+    .addTo(map)
+    .bindPopup(
+      order.address
+        ? `${order.address.street}, ${order.address.number}`
+        : 'Endereço de entrega'
+    );
+
+  const bounds = L.latLngBounds([
+    [pharmacy.lat, pharmacy.lng],
+    [customer.lat, customer.lng]
+  ]);
+
+  // Driver position by status
+  if (order.status === 'out' || order.status === 'delivered') {
+    let driverPos;
+    if (order.status === 'delivered') {
+      driverPos = customer;
+    } else {
+      // midpoint + slight offset, then animate toward customer
+      driverPos = {
+        lat: pharmacy.lat + (customer.lat - pharmacy.lat) * 0.45,
+        lng: pharmacy.lng + (customer.lng - pharmacy.lng) * 0.45
+      };
+    }
+    trackMarkers.driver = L.marker([driverPos.lat, driverPos.lng], {
+      icon: createMapIcon('🏍️', '#10B981')
+    })
+      .addTo(map)
+      .bindPopup(order.driver?.name || 'Entregador');
+
+    trackRouteLine = L.polyline(
+      [
+        [pharmacy.lat, pharmacy.lng],
+        [driverPos.lat, driverPos.lng],
+        [customer.lat, customer.lng]
+      ],
+      { color: '#F97316', weight: 4, opacity: 0.85, dashArray: '8 8' }
+    ).addTo(map);
+
+    bounds.extend([driverPos.lat, driverPos.lng]);
+
+    if (order.status === 'out') {
+      animateDriver(driverPos, customer, 45000);
+    }
+  } else {
+    trackRouteLine = L.polyline(
+      [
+        [pharmacy.lat, pharmacy.lng],
+        [customer.lat, customer.lng]
+      ],
+      { color: '#F97316', weight: 3, opacity: 0.5, dashArray: '6 10' }
+    ).addTo(map);
+  }
+
+  map.fitBounds(bounds.pad(0.25));
+  setTimeout(() => map.invalidateSize(), 150);
+
+  if (hint) {
+    if (order.status === 'out') hint.textContent = 'Motorista a caminho · mapa ao vivo';
+    else if (order.status === 'delivered') hint.textContent = 'Pedido entregue neste endereço';
+    else if (order.status === 'preparing') hint.textContent = 'Farmácia preparando · rota até você';
+    else hint.textContent = 'Pedido confirmado · aguardando separação';
+  }
+}
+
 function openTracking(orderId) {
+
   currentTrackId = orderId;
   renderTracking(orderId);
   showScreen('tracking');
@@ -1377,6 +1585,8 @@ function renderTracking(orderId) {
   if (addrLabel && order.address) {
     addrLabel.textContent = order.address.street + ', ' + order.address.number;
   }
+
+  updateTrackingMap(order);
 }
 
 function renderOrdersList(mode, btn) {
