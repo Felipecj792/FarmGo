@@ -13,7 +13,8 @@ function showScreen(id) {
   if (id === 'prescription') renderRxHistory();
   if (id === 'pharmacy-dashboard') refreshPharmacyFromOrders();
   if (id === 'driver-dashboard') refreshDriverFromOrders();
-  if (id === 'checkout' || id === 'cart') updateTotals();
+  if (id === 'checkout') { prepareCheckout(); updateTotals(); }
+  if (id === 'cart') updateTotals();
   if (id === 'home') updateFirstPurchaseUI();
 }
 
@@ -857,6 +858,17 @@ function updateCartUI() {
     updateTotals();
   }
 
+  const cartLabel = document.getElementById('cart-address-label');
+  if (cartLabel) {
+    const addresses = typeof getAddresses === 'function' ? getAddresses() : [];
+    if (addresses.length) {
+      const a = addresses[0];
+      cartLabel.textContent = (a.street || '') + ', ' + (a.number || '');
+    } else {
+      cartLabel.textContent = 'Informe o endereço no checkout';
+    }
+  }
+
   updateCartBadges();
 }
 
@@ -1219,22 +1231,171 @@ function fmtMoney(n) {
   return 'R$ ' + Number(n).toFixed(2).replace('.', ',');
 }
 
+
+let selectedAddressIndex = 0;
+
+function prepareCheckout() {
+  const addresses = getAddresses();
+  const savedBox = document.getElementById('co-saved-address');
+  const form = document.getElementById('co-address-form');
+  const listEl = document.getElementById('co-address-list');
+
+  if (addresses.length > 0) {
+    if (selectedAddressIndex >= addresses.length) selectedAddressIndex = 0;
+    const a = addresses[selectedAddressIndex];
+    fillCheckoutAddress(a);
+    if (savedBox) {
+      savedBox.style.display = 'block';
+      const label = document.getElementById('co-saved-label');
+      const textEl = document.getElementById('co-saved-text');
+      if (label) label.textContent = a.label || 'Endereço';
+      if (textEl) {
+        textEl.innerHTML =
+          (a.street || '') + ', ' + (a.number || '') +
+          (a.complement ? ' - ' + a.complement : '') + '<br>' +
+          (a.neighborhood || '') + ' · ' + (a.city || '') + '/' + (a.state || '') +
+          (a.cep ? '<br>CEP ' + a.cep : '');
+      }
+    }
+    if (form) form.style.display = 'none';
+    // lista de escolha se tiver mais de um
+    if (listEl) listEl.innerHTML = '';
+  } else {
+    if (savedBox) savedBox.style.display = 'none';
+    if (form) form.style.display = 'block';
+    if (listEl) listEl.innerHTML = '<p style="font-size:13px;color:var(--gray);margin-bottom:8px">Nenhum endereço salvo. Preencha abaixo.</p>';
+  }
+
+  // atualiza label do carrinho
+  const cartLabel = document.getElementById('cart-address-label');
+  if (cartLabel && addresses[0]) {
+    const a = addresses[selectedAddressIndex] || addresses[0];
+    cartLabel.textContent = a.street + ', ' + a.number;
+  } else if (cartLabel) {
+    cartLabel.textContent = 'Informe o endereço no checkout';
+  }
+}
+
+function showCheckoutAddressForm(showPicker) {
+  const form = document.getElementById('co-address-form');
+  const savedBox = document.getElementById('co-saved-address');
+  const listEl = document.getElementById('co-address-list');
+  const addresses = getAddresses();
+
+  if (form) form.style.display = 'block';
+  if (savedBox) savedBox.style.display = 'none';
+
+  if (showPicker && listEl && addresses.length) {
+    listEl.innerHTML =
+      '<p style="font-size:13px;margin-bottom:8px">Escolha um endereço ou preencha outro:</p>' +
+      addresses
+        .map(
+          (a, i) =>
+            `<button type="button" class="btn btn-sm ${i === selectedAddressIndex ? 'btn-primary' : 'btn-outline'}" style="margin:0 6px 6px 0" onclick="selectCheckoutAddress(${i})">${a.label || 'Endereço ' + (i + 1)}</button>`
+        )
+        .join('') +
+      '<button type="button" class="btn btn-sm btn-outline" style="margin:0 6px 6px 0" onclick="clearCheckoutAddressForm()">Novo endereço</button>';
+  }
+}
+
+function selectCheckoutAddress(index) {
+  selectedAddressIndex = index;
+  const addresses = getAddresses();
+  if (addresses[index]) fillCheckoutAddress(addresses[index]);
+  prepareCheckout();
+}
+
+function clearCheckoutAddressForm() {
+  ['co-cep', 'co-street', 'co-number', 'co-complement', 'co-neighborhood'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const city = document.getElementById('co-city');
+  const state = document.getElementById('co-state');
+  if (city) city.value = 'São Paulo';
+  if (state) state.value = 'SP';
+}
+
+function fillCheckoutAddress(a) {
+  if (!a) return;
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = v || '';
+  };
+  set('co-cep', a.cep);
+  set('co-street', a.street);
+  set('co-number', a.number);
+  set('co-complement', a.complement);
+  set('co-neighborhood', a.neighborhood);
+  set('co-city', a.city || 'São Paulo');
+  set('co-state', a.state || 'SP');
+}
+
+function getCheckoutAddress() {
+  const addresses = getAddresses();
+  const form = document.getElementById('co-address-form');
+  const formVisible = form && form.style.display !== 'none';
+
+  // Se tem endereço salvo e formulário escondido, usa o selecionado
+  if (!formVisible && addresses.length > 0) {
+    return addresses[selectedAddressIndex] || addresses[0];
+  }
+
+  const street = document.getElementById('co-street')?.value.trim() || '';
+  const number = document.getElementById('co-number')?.value.trim() || '';
+  if (street && number) {
+    return {
+      label: 'Entrega',
+      cep: document.getElementById('co-cep')?.value.trim() || '',
+      street,
+      number,
+      complement: document.getElementById('co-complement')?.value.trim() || '',
+      neighborhood: document.getElementById('co-neighborhood')?.value.trim() || '',
+      city: document.getElementById('co-city')?.value.trim() || 'São Paulo',
+      state: document.getElementById('co-state')?.value.trim() || 'SP'
+    };
+  }
+
+  if (addresses.length > 0) return addresses[selectedAddressIndex] || addresses[0];
+  return null;
+}
+
+function saveAddressFromCheckout() {
+  const street = document.getElementById('co-street')?.value.trim();
+  const number = document.getElementById('co-number')?.value.trim();
+  if (!street || !number) {
+    alert('Preencha rua e número para salvar.');
+    return;
+  }
+  const addr = {
+    label: 'Casa',
+    cep: document.getElementById('co-cep')?.value.trim() || '',
+    street,
+    number,
+    complement: document.getElementById('co-complement')?.value.trim() || '',
+    neighborhood: document.getElementById('co-neighborhood')?.value.trim() || '',
+    city: document.getElementById('co-city')?.value.trim() || 'São Paulo',
+    state: document.getElementById('co-state')?.value.trim() || 'SP'
+  };
+  const list = getAddresses();
+  list.push(addr);
+  saveAddresses(list);
+  selectedAddressIndex = list.length - 1;
+  alert('Endereço salvo!');
+  prepareCheckout();
+}
+
 function placeOrder() {
+
   if (cart.length === 0) {
     alert('Carrinho vazio!');
     return;
   }
 
-  const street = document.getElementById('co-street');
-  const number = document.getElementById('co-number');
-  if (street && !street.value.trim()) {
-    alert('Informe o endereço de entrega.');
-    street.focus();
-    return;
-  }
-  if (number && !number.value.trim()) {
-    alert('Informe o número do endereço.');
-    number.focus();
+  const address = getCheckoutAddress();
+  if (!address || !address.street || !address.number) {
+    alert('Cadastre ou informe um endereço de entrega.');
+    showCheckoutAddressForm(true);
     return;
   }
 
@@ -1245,16 +1406,6 @@ function placeOrder() {
   const total = Math.max(0, subtotal + freight - discount);
   const pay = document.querySelector('input[name="payment"]:checked');
   const payment = pay ? pay.value : 'pix';
-
-  const address = {
-    cep: document.getElementById('co-cep')?.value || '',
-    street: street.value.trim(),
-    number: number.value.trim(),
-    complement: document.getElementById('co-complement')?.value || '',
-    neighborhood: document.getElementById('co-neighborhood')?.value || '',
-    city: document.getElementById('co-city')?.value || 'São Paulo',
-    state: document.getElementById('co-state')?.value || 'SP'
-  };
 
   const id = String(Math.floor(10000 + Math.random() * 90000));
   const now = new Date();
