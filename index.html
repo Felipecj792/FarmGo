@@ -235,7 +235,7 @@
           </div>
           <div class="form-group">
             <label>Senha</label>
-            <input type="password" id="login-password" placeholder="••••••••" required>
+            <input type="password" id="login-password" placeholder="6 dígitos" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" required oninput="this.value=this.value.replace(/\D/g,'').slice(0,6)">
           </div>
           <div class="form-row">
             <label class="checkbox"><input type="checkbox" id="login-remember"> Lembrar de mim</label>
@@ -244,6 +244,9 @@
           <p id="login-error" class="form-error" style="display:none;"></p>
           <button type="submit" class="btn btn-primary btn-block">Entrar</button>
         </form>
+        <button type="button" class="btn btn-outline btn-block" id="btn-biometric" onclick="loginWithBiometric()" style="margin-top:12px;display:none">
+          <i class="fas fa-fingerprint"></i> Entrar com digital
+        </button>
         <div class="divider"><span>ou</span></div>
         <button class="btn btn-outline btn-block" onclick="showScreen('home')">
           <i class="fab fa-google"></i> Continuar com Google
@@ -302,7 +305,7 @@
           </div>
           <div class="form-group">
             <label>Senha</label>
-            <input type="password" id="reg-password" placeholder="Mínimo 8 caracteres" minlength="8" required>
+            <input type="password" id="reg-password" placeholder="6 dígitos numéricos" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" required oninput="this.value=this.value.replace(/\D/g,'').slice(0,6)">
           </div>
           <label class="checkbox">
             <input type="checkbox" id="reg-terms" required> Aceito os <a href="#">Termos de Uso</a> e <a href="#">Política de Privacidade</a>
@@ -369,7 +372,6 @@
               <span class="med-lab">EMS · 20 comprimidos</span>
               <div class="med-meta">
                 <span class="price">R$ 8,90</span>
-                <span class="time"><i class="fas fa-clock"></i> 12 min</span>
               </div>
             </div>
             <button class="add-btn" onclick="event.stopPropagation(); addToCart('Dipirona 500mg', 8.90)"><i class="fas fa-plus"></i></button>
@@ -381,7 +383,6 @@
               <span class="med-lab">Medley · 30 comprimidos</span>
               <div class="med-meta">
                 <span class="price">R$ 15,40</span>
-                <span class="time"><i class="fas fa-clock"></i> 15 min</span>
               </div>
             </div>
             <button class="add-btn" onclick="event.stopPropagation(); addToCart('Losartana 50mg', 15.40)"><i class="fas fa-plus"></i></button>
@@ -393,7 +394,6 @@
               <span class="med-lab">Neo Química · 28 cápsulas</span>
               <div class="med-meta">
                 <span class="price">R$ 12,70</span>
-                <span class="time"><i class="fas fa-clock"></i> 18 min</span>
               </div>
             </div>
             <button class="add-btn" onclick="event.stopPropagation(); addToCart('Omeprazol 20mg', 12.70)"><i class="fas fa-plus"></i></button>
@@ -405,7 +405,6 @@
               <span class="med-lab">EMS · 21 cápsulas</span>
               <div class="med-meta">
                 <span class="price">R$ 22,90</span>
-                <span class="time"><i class="fas fa-clock"></i> 20 min</span>
               </div>
             </div>
             <button class="add-btn" onclick="event.stopPropagation(); addToCart('Amoxicilina 500mg', 22.90)"><i class="fas fa-plus"></i></button>
@@ -417,7 +416,6 @@
               <span class="med-lab">Medley · 15 ml</span>
               <div class="med-meta">
                 <span class="price">R$ 11,50</span>
-                <span class="time"><i class="fas fa-clock"></i> 14 min</span>
               </div>
             </div>
             <button class="add-btn" onclick="event.stopPropagation(); addToCart('Paracetamol Infantil', 11.50)"><i class="fas fa-plus"></i></button>
@@ -429,7 +427,6 @@
               <span class="med-lab">Roche · 30 comprimidos · <span class="badge-rx">Receita</span></span>
               <div class="med-meta">
                 <span class="price">R$ 18,90</span>
-                <span class="time"><i class="fas fa-clock"></i> 22 min</span>
               </div>
             </div>
             <button class="add-btn" onclick="event.stopPropagation(); addToCart('Clonazepam 2mg', 18.90)"><i class="fas fa-plus"></i></button>
@@ -441,7 +438,6 @@
               <span class="med-lab">La Roche · 120 ml</span>
               <div class="med-meta">
                 <span class="price">R$ 54,90</span>
-                <span class="time"><i class="fas fa-clock"></i> 25 min</span>
               </div>
             </div>
             <button class="add-btn" onclick="event.stopPropagation(); addToCart('Protetor Solar FPS 50', 54.90)"><i class="fas fa-plus"></i></button>
@@ -512,7 +508,6 @@
             <span class="med-lab">EMS · 20 comprimidos</span>
             <div class="med-meta">
               <span class="price">R$ 8,90</span>
-              <span class="time"><i class="fas fa-clock"></i> 12 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Dipirona 500mg', 8.90)"><i class="fas fa-plus"></i></button>
@@ -524,7 +519,6 @@
             <span class="med-lab">Medley · 30 comprimidos</span>
             <div class="med-meta">
               <span class="price">R$ 15,40</span>
-              <span class="time"><i class="fas fa-clock"></i> 15 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Losartana 50mg', 15.40)"><i class="fas fa-plus"></i></button>
@@ -536,7 +530,6 @@
             <span class="med-lab">Neo Química · 28 cápsulas</span>
             <div class="med-meta">
               <span class="price">R$ 12,70</span>
-              <span class="time"><i class="fas fa-clock"></i> 18 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Omeprazol 20mg', 12.70)"><i class="fas fa-plus"></i></button>
@@ -548,7 +541,6 @@
             <span class="med-lab">EMS · 21 cápsulas · <span class="badge-rx">Receita</span></span>
             <div class="med-meta">
               <span class="price">R$ 22,90</span>
-              <span class="time"><i class="fas fa-clock"></i> 20 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Amoxicilina 500mg', 22.90)"><i class="fas fa-plus"></i></button>
@@ -560,7 +552,6 @@
             <span class="med-lab">Novo Nordisk · <span class="badge-rx">Receita</span></span>
             <div class="med-meta">
               <span class="price">R$ 48,00</span>
-              <span class="time"><i class="fas fa-clock"></i> 25 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Insulina NPH', 48.00)"><i class="fas fa-plus"></i></button>
@@ -572,7 +563,6 @@
             <span class="med-lab">Medley · 15 ml</span>
             <div class="med-meta">
               <span class="price">R$ 11,50</span>
-              <span class="time"><i class="fas fa-clock"></i> 14 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Paracetamol Infantil', 11.50)"><i class="fas fa-plus"></i></button>
@@ -584,7 +574,6 @@
             <span class="med-lab">Roche · 30 comprimidos · <span class="badge-rx">Receita</span></span>
             <div class="med-meta">
               <span class="price">R$ 18,90</span>
-              <span class="time"><i class="fas fa-clock"></i> 22 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Clonazepam 2mg', 18.90)"><i class="fas fa-plus"></i></button>
@@ -596,7 +585,6 @@
             <span class="med-lab">La Roche · 120 ml</span>
             <div class="med-meta">
               <span class="price">R$ 54,90</span>
-              <span class="time"><i class="fas fa-clock"></i> 25 min</span>
             </div>
           </div>
           <button class="add-btn" onclick="event.stopPropagation(); addToCart('Protetor Solar FPS 50', 54.90)"><i class="fas fa-plus"></i></button>
@@ -627,7 +615,6 @@
         <div class="product-price" id="prod-price">R$ 8,90</div>
         <div class="product-tags" id="prod-tags">
           <span class="tag">Sem receita</span>
-          <span class="tag green">Entrega 12 min</span>
         </div>
       </div>
       <div class="product-section">
@@ -827,12 +814,7 @@
         <h3>Forma de pagamento</h3>
         <div class="payment-options">
           <label class="payment-option selected">
-            <input type="radio" name="payment" value="card" checked>
-            <i class="fas fa-credit-card"></i>
-            <span>Cartão de crédito</span>
-          </label>
-          <label class="payment-option">
-            <input type="radio" name="payment" value="pix">
+            <input type="radio" name="payment" value="pix" checked>
             <i class="fas fa-qrcode"></i>
             <span>Pix</span>
           </label>
@@ -841,19 +823,6 @@
             <i class="fas fa-money-bill-wave"></i>
             <span>Dinheiro</span>
           </label>
-        </div>
-      </div>
-      <div class="checkout-section" id="card-fields">
-        <h3>Dados do cartão</h3>
-        <div class="form-group">
-          <input type="text" placeholder="Número do cartão">
-        </div>
-        <div class="form-row-2">
-          <input type="text" placeholder="MM/AA">
-          <input type="text" placeholder="CVV">
-        </div>
-        <div class="form-group">
-          <input type="text" placeholder="Nome no cartão">
         </div>
       </div>
       <div class="checkout-section">
