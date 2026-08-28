@@ -771,37 +771,54 @@
     <main class="app-content">
       <div class="checkout-section">
         <h3>Endereço de entrega</h3>
-        <div class="form-group">
-          <label>CEP</label>
-          <input type="text" id="co-cep" placeholder="00000-000" maxlength="9" oninput="formatCep(this)">
-        </div>
-        <div class="form-group">
-          <label>Rua / Avenida</label>
-          <input type="text" id="co-street" placeholder="Nome da rua" required>
-        </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label>Número</label>
-            <input type="text" id="co-number" placeholder="Nº">
+        <!-- Endereço salvo -->
+        <div id="co-saved-address" class="order-card" style="display:none;margin-bottom:12px">
+          <div class="order-header">
+            <span class="order-id" id="co-saved-label">Casa</span>
+            <span class="order-status done">Salvo</span>
           </div>
-          <div class="form-group">
-            <label>Complemento</label>
-            <input type="text" id="co-complement" placeholder="Apto, bloco...">
+          <div class="order-items" id="co-saved-text"></div>
+          <div class="order-footer" style="margin-top:10px;gap:8px">
+            <button type="button" class="btn btn-sm btn-outline" onclick="showCheckoutAddressForm(true)">Trocar</button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="showScreen('profile-addresses')">Gerenciar</button>
           </div>
         </div>
-        <div class="form-group">
-          <label>Bairro</label>
-          <input type="text" id="co-neighborhood" placeholder="Bairro">
-        </div>
-        <div class="form-row-2">
+        <!-- Formulário (só se não tiver endereço ou usuário pedir trocar) -->
+        <div id="co-address-form">
+          <div id="co-address-list" style="margin-bottom:12px"></div>
           <div class="form-group">
-            <label>Cidade</label>
-            <input type="text" id="co-city" placeholder="Cidade" value="São Paulo">
+            <label>CEP</label>
+            <input type="text" id="co-cep" placeholder="00000-000" maxlength="9" oninput="formatCep(this)">
           </div>
           <div class="form-group">
-            <label>UF</label>
-            <input type="text" id="co-state" placeholder="SP" maxlength="2" value="SP">
+            <label>Rua / Avenida</label>
+            <input type="text" id="co-street" placeholder="Nome da rua">
           </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Número</label>
+              <input type="text" id="co-number" placeholder="Nº">
+            </div>
+            <div class="form-group">
+              <label>Complemento</label>
+              <input type="text" id="co-complement" placeholder="Apto, bloco...">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Bairro</label>
+            <input type="text" id="co-neighborhood" placeholder="Bairro">
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Cidade</label>
+              <input type="text" id="co-city" placeholder="Cidade" value="São Paulo">
+            </div>
+            <div class="form-group">
+              <label>UF</label>
+              <input type="text" id="co-state" placeholder="SP" maxlength="2" value="SP">
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline btn-block" style="margin-top:8px" onclick="saveAddressFromCheckout()">Salvar este endereço</button>
         </div>
       </div>
 
