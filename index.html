@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FarmGo — Delivery de Remédios</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- ==================== LANDING PAGE ==================== -->
+  <div id="landing" class="screen active">
+    <header class="landing-header">
+      <div class="container">
+        <div class="logo">
+          <i class="fas fa-pills"></i>
+          <span>FarmGo</span>
+        </div>
+        <nav>
+          <a href="#como-funciona">Como funciona</a>
+          <a href="#beneficios">Benefícios</a>
+          <a href="#farmacias">Para Farmácias</a>
+          <button class="btn btn-outline" onclick="showScreen('login')">Entrar</button>
+          <button class="btn btn-primary" onclick="showScreen('register')">Começar agora</button>
+        </nav>
+        <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+          <i class="fas fa-bars"></i>
+        </button>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="container hero-content">
+        <div class="hero-text">
+          <h1>Seu remédio na porta em <span class="highlight">minutos</span></h1>
+          <p>Peça medicamentos com receita digital, acompanhe a entrega em tempo real e receba com segurança. Rápido, confiável e 100% legal.</p>
+          <div class="hero-buttons">
+            <button class="btn btn-primary btn-lg" onclick="showScreen('register')">
+              <i class="fas fa-rocket"></i> Pedir agora
+            </button>
+            <button class="btn btn-outline btn-lg" onclick="document.getElementById('como-funciona').scrollIntoView({behavior:'smooth'})">
+              Ver como funciona
+            </button>
+          </div>
+          <div class="hero-stats">
+            <div class="stat">
+              <strong>15min</strong>
+              <span>Entrega média</span>
+            </div>
+            <div class="stat">
+              <strong>+2.400</strong>
+              <span>Farmácias</span>
+            </div>
+            <div class="stat">
+              <strong>98%</strong>
+              <span>Satisfação</span>
+            </div>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <div class="phone-mockup">
+            <div class="phone-screen">
+              <div class="app-preview">
+                <div class="preview-header">
+                  <i class="fas fa-map-marker-alt"></i>
+                  <span>São Paulo, SP</span>
+                </div>
+                <div class="preview-search">
+                  <i class="fas fa-search"></i>
+                  <span>Buscar remédio...</span>
+                </div>
+                <div class="preview-card">
+                  <div class="preview-med">
+                    <i class="fas fa-capsules"></i>
+                    <div>
+                      <strong>Dipirona 500mg</strong>
+                      <span>R$ 8,90 · Entrega 12min</span>
+                    </div>
+                  </div>
+                  <div class="preview-med">
+                    <i class="fas fa-tablets"></i>
+                    <div>
+                      <strong>Losartana 50mg</strong>
+                      <span>R$ 15,40 · Entrega 18min</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="preview-btn">Adicionar ao carrinho</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="como-funciona" class="section">
+      <div class="container">
+        <h2 class="section-title">Como funciona</h2>
+        <p class="section-subtitle">Em 4 passos simples você recebe seu medicamento</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-icon"><i class="fas fa-search"></i></div>
+            <h3>1. Busque</h3>
+            <p>Encontre o remédio pelo nome ou envie a receita médica.</p>
+          </div>
+          <div class="step">
+            <div class="step-icon"><i class="fas fa-file-medical"></i></div>
+            <h3>2. Envie a receita</h3>
+            <p>Faça upload da receita digital ou foto. Validamos em segundos.</p>
+          </div>
+          <div class="step">
+            <div class="step-icon"><i class="fas fa-shopping-cart"></i></div>
+            <h3>3. Confirme o pedido</h3>
+            <p>Escolha a farmácia, forma de pagamento e endereço.</p>
+          </div>
+          <div class="step">
+            <div class="step-icon"><i class="fas fa-motorcycle"></i></div>
+            <h3>4. Receba</h3>
+            <p>Acompanhe em tempo real e receba com segurança.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="beneficios" class="section section-alt">
+      <div class="container">
+        <h2 class="section-title">Por que escolher o FarmGo?</h2>
+        <div class="benefits-grid">
+          <div class="benefit-card">
+            <i class="fas fa-bolt"></i>
+            <h3>Entrega super rápida</h3>
+            <p>Média de 15 minutos nas principais capitais. Entregadores parceiros dedicados.</p>
+          </div>
+          <div class="benefit-card">
+            <i class="fas fa-shield-alt"></i>
+            <h3>100% seguro e legal</h3>
+            <p>Receitas validadas, farmácias credenciadas e dados protegidos (LGPD).</p>
+          </div>
+          <div class="benefit-card">
+            <i class="fas fa-prescription"></i>
+            <h3>Receita digital</h3>
+            <p>Envie foto ou PDF. Nossa IA + farmacêuticos validam em minutos.</p>
+          </div>
+          <div class="benefit-card">
+            <i class="fas fa-map-marked-alt"></i>
+            <h3>Rastreio em tempo real</h3>
+            <p>Saiba exatamente onde está o seu pedido a cada segundo.</p>
+          </div>
+          <div class="benefit-card">
+            <i class="fas fa-tags"></i>
+            <h3>Melhores preços</h3>
+            <p>Compare preços entre farmácias próximas e economize.</p>
+          </div>
+          <div class="benefit-card">
+            <i class="fas fa-headset"></i>
+            <h3>Suporte 24h</h3>
+            <p>Farmacêuticos e atendimento disponíveis a qualquer hora.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="farmacias" class="section">
+      <div class="container">
+        <div class="farmacia-cta">
+          <div>
+            <h2>É dono de farmácia?</h2>
+            <p>Cadastre sua farmácia no FarmGo e aumente suas vendas com delivery próprio. Comissão justa e painel completo.</p>
+            <button class="btn btn-primary" onclick="showScreen('pharmacy-login')">Sou farmácia →</button>
+          </div>
+          <div class="farmacia-visual">
+            <i class="fas fa-store"></i>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div>
+            <div class="logo"><i class="fas fa-pills"></i> FarmGo</div>
+            <p>Delivery de medicamentos rápido, seguro e legal.</p>
+          </div>
+          <div>
+            <h4>Empresa</h4>
+            <a href="#">Sobre nós</a>
+            <a href="#">Carreiras</a>
+            <a href="#">Imprensa</a>
+          </div>
+          <div>
+            <h4>Suporte</h4>
+            <a href="#">Central de Ajuda</a>
+            <a href="#">Termos de Uso</a>
+            <a href="#">Privacidade</a>
+          </div>
+          <div>
+            <h4>Baixe o app</h4>
+            <div class="store-buttons">
+              <button class="btn-store"><i class="fab fa-apple"></i> App Store</button>
+              <button class="btn-store"><i class="fab fa-google-play"></i> Google Play</button>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          © 2026 FarmGo. Todos os direitos reservados.
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ==================== LOGIN ==================== -->
+  <div id="login" class="screen">
+    <div class="auth-container">
+      <button class="back-btn" onclick="showScreen('landing')"><i class="fas fa-arrow-left"></i></button>
+      <div class="auth-card">
+        <div class="logo logo-lg"><i class="fas fa-pills"></i> FarmGo</div>
+        <h2>Entrar na sua conta</h2>
+        <p class="auth-subtitle">Acesse pedidos, receitas e rastreio</p>
+        <form onsubmit="event.preventDefault(); showScreen('home')">
+          <div class="form-group">
+            <label>E-mail ou CPF</label>
+            <input type="text" placeholder="seu@email.com ou 000.000.000-00" required>
+          </div>
+          <div class="form-group">
+            <label>Senha</label>
+            <input type="password" placeholder="••••••••" required>
+          </div>
+          <div class="form-row">
+            <label class="checkbox"><input type="checkbox"> Lembrar de mim</label>
+            <a href="#" class="link">Esqueci a senha</a>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+        </form>
+        <div class="divider"><span>ou</span></div>
+        <button class="btn btn-outline btn-block" onclick="showScreen('home')">
+          <i class="fab fa-google"></i> Continuar com Google
+        </button>
+        <p class="auth-footer">Não tem conta? <a href="#" onclick="showScreen('register')">Cadastre-se grátis</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== REGISTER ==================== -->
+  <div id="register" class="screen">
+    <div class="auth-container">
+      <button class="back-btn" onclick="showScreen('landing')"><i class="fas fa-arrow-left"></i></button>
+      <div class="auth-card">
+        <div class="logo logo-lg"><i class="fas fa-pills"></i> FarmGo</div>
+        <h2>Criar conta</h2>
+        <p class="auth-subtitle">Leva menos de 1 minuto</p>
+        <form onsubmit="event.preventDefault(); showScreen('home')">
+          <div class="form-group">
+            <label>Nome completo</label>
+            <input type="text" placeholder="Seu nome" required>
+          </div>
+          <div class="form-group">
+            <label>E-mail</label>
+            <input type="email" placeholder="seu@email.com" required>
+          </div>
+          <div class="form-group">
+            <label>CPF</label>
+            <input type="text" placeholder="000.000.000-00" required>
+          </div>
+          <div class="form-group">
+            <label>Celular</label>
+            <input type="tel" placeholder="(11) 99999-9999" required>
+          </div>
+          <div class="form-group">
+            <label>Senha</label>
+            <input type="password" placeholder="Mínimo 8 caracteres" required>
+          </div>
+          <label class="checkbox">
+            <input type="checkbox" required> Aceito os <a href="#">Termos de Uso</a> e <a href="#">Política de Privacidade</a>
+          </label>
+          <button type="submit" class="btn btn-primary btn-block">Criar conta</button>
+        </form>
+        <p class="auth-footer">Já tem conta? <a href="#" onclick="showScreen('login')">Entrar</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== APP HOME ==================== -->
+  <div id="home" class="screen app-screen">
+    <header class="app-header">
+      <div class="app-header-top">
+        <div class="logo app-logo">
+          <i class="fas fa-pills"></i>
+          <span>FarmGo</span>
+        </div>
+        <button class="icon-btn" onclick="showScreen('profile')">
+          <i class="fas fa-user-circle"></i>
+        </button>
+      </div>
+      <div class="search-bar" onclick="showScreen('search')">
+        <i class="fas fa-search"></i>
+        <span>Buscar remédio ou farmácia...</span>
+      </div>
+    </header>
+
+    <main class="app-content">
+      <div class="banner">
+        <div class="banner-text">
+          <strong>Primeira compra?</strong>
+          <span>Frete grátis até R$ 30</span>
+        </div>
+        <i class="fas fa-gift"></i>
+      </div>
+
+      <section class="section-app">
+        <h3>Categorias</h3>
+        <div class="categories">
+          <button class="cat-btn active" onclick="showScreen('search')"><i class="fas fa-capsules"></i> Medicamentos</button>
+          <button class="cat-btn"><i class="fas fa-baby"></i> Infantil</button>
+          <button class="cat-btn"><i class="fas fa-heart"></i> Coração</button>
+          <button class="cat-btn"><i class="fas fa-brain"></i> Sistema nervoso</button>
+          <button class="cat-btn"><i class="fas fa-prescription-bottle"></i> Genericos</button>
+          <button class="cat-btn"><i class="fas fa-spa"></i> Beleza</button>
+        </div>
+      </section>
+
+      <section class="section-app">
+        <div class="section-header">
+          <h3>Mais pedidos perto de você</h3>
+          <a href="#" onclick="showScreen('search')">Ver todos</a>
+        </div>
+        <div class="med-list">
+          <div class="med-card" onclick="showScreen('product')">
+            <div class="med-icon"><i class="fas fa-capsules"></i></div>
+            <div class="med-info">
+              <strong>Dipirona Monoidratada 500mg</strong>
+              <span class="med-lab">EMS · 20 comprimidos</span>
+              <div class="med-meta">
+                <span class="price">R$ 8,90</span>
+                <span class="time"><i class="fas fa-clock"></i> 12 min</span>
+              </div>
+            </div>
+            <button class="add-btn" onclick="event.stopPropagation(); addToCart('Dipirona 500mg', 8.90)"><i class="fas fa-plus"></i></button>
+          </div>
+          <div class="med-card" onclick="showScreen('product')">
+            <div class="med-icon blue"><i class="fas fa-tablets"></i></div>
+            <div class="med-info">
+              <strong>Losartana Potássica 50mg</strong>
+              <span class="med-lab">Medley · 30 comprimidos</span>
+              <div class="med-meta">
+                <span class="price">R$ 15,40</span>
+                <span class="time"><i class="fas fa-clock"></i> 15 min</span>
+              </div>
+            </div>
+            <button class="add-btn" onclick="event.stopPropagation(); addToCart('Losartana 50mg', 15.40)"><i class="fas fa-plus"></i></button>
+          </div>
+          <div class="med-card" onclick="showScreen('product')">
+            <div class="med-icon green"><i class="fas fa-pills"></i></div>
+            <div class="med-info">
+              <strong>Omeprazol 20mg</strong>
+              <span class="med-lab">Neo Química · 28 cápsulas</span>
+              <div class="med-meta">
+                <span class="price">R$ 12,70</span>
+                <span class="time"><i class="fas fa-clock"></i> 18 min</span>
+              </div>
+            </div>
+            <button class="add-btn" onclick="event.stopPropagation(); addToCart('Omeprazol 20mg', 12.70)"><i class="fas fa-plus"></i></button>
+          </div>
+          <div class="med-card" onclick="showScreen('product')">
+            <div class="med-icon orange"><i class="fas fa-prescription-bottle-alt"></i></div>
+            <div class="med-info">
+              <strong>Amoxicilina 500mg</strong>
+              <span class="med-lab">EMS · 21 cápsulas</span>
+              <div class="med-meta">
+                <span class="price">R$ 22,90</span>
+                <span class="time"><i class="fas fa-clock"></i> 20 min</span>
+              </div>
+            </div>
+            <button class="add-btn" onclick="event.stopPropagation(); addToCart('Amoxicilina 500mg', 22.90)"><i class="fas fa-plus"></i></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-app">
+        <div class="section-header">
+          <h3>Farmácias próximas</h3>
+          <a href="#">Ver mapa</a>
+        </div>
+        <div class="pharmacy-list">
+          <div class="pharmacy-card">
+            <div class="pharmacy-img"><i class="fas fa-store"></i></div>
+            <div>
+              <strong>Drogasil Paulista</strong>
+              <span>0,8 km · 4.9 ★ · 12 min</span>
+            </div>
+          </div>
+          <div class="pharmacy-card">
+            <div class="pharmacy-img"><i class="fas fa-store"></i></div>
+            <div>
+              <strong>Droga Raia Consolação</strong>
+              <span>1,2 km · 4.8 ★ · 15 min</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" onclick="showScreen('home')"><i class="fas fa-home"></i><span>Início</span></button>
+      <button class="nav-item" onclick="showScreen('search')"><i class="fas fa-search"></i><span>Buscar</span></button>
+      <button class="nav-item" onclick="showScreen('prescription')"><i class="fas fa-file-medical"></i><span>Receita</span></button>
+      <button class="nav-item" onclick="showScreen('cart')">
+        <i class="fas fa-shopping-bag"></i><span>Carrinho</span>
+        <span class="badge" id="cart-badge">0</span>
+      </button>
+      <button class="nav-item" onclick="showScreen('orders')"><i class="fas fa-motorcycle"></i><span>Pedidos</span></button>
+    </nav>
+  </div>
+
+  <!-- ==================== SEARCH ==================== -->
+  <div id="search" class="screen app-screen">
+    <header class="app-header">
+      <div class="search-header">
+        <button class="icon-btn" onclick="showScreen('home')"><i class="fas fa-arrow-left"></i></button>
+        <div class="search-input-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" id="search-input" placeholder="Digite o nome do remédio..." autofocus oninput="filterMeds()">
+        </div>
+      </div>
+    </header>
+    <main class="app-content">
+      <div class="filters">
+        <button class="filter-chip active">Todos</button>
+        <button class="filter-chip">Com receita</button>
+        <button class="filter-chip">Genéricos</button>
+        <button class="filter-chip">Mais baratos</button>
+      </div>
+      <div class="med-list" id="search-results">
+        <!-- filled by JS or static -->
+        <div class="med-card">
+          <div class="med-icon"><i class="fas fa-capsules"></i></div>
+          <div class="med-info">
+            <strong>Dipirona Monoidratada 500mg</strong>
+            <span class="med-lab">EMS · 20 comprimidos</span>
+            <div class="med-meta">
+              <span class="price">R$ 8,90</span>
+              <span class="time"><i class="fas fa-clock"></i> 12 min</span>
+            </div>
+          </div>
+          <button class="add-btn" onclick="addToCart('Dipirona 500mg', 8.90)"><i class="fas fa-plus"></i></button>
+        </div>
+        <div class="med-card">
+          <div class="med-icon blue"><i class="fas fa-tablets"></i></div>
+          <div class="med-info">
+            <strong>Losartana Potássica 50mg</strong>
+            <span class="med-lab">Medley · 30 comprimidos</span>
+            <div class="med-meta">
+              <span class="price">R$ 15,40</span>
+              <span class="time"><i class="fas fa-clock"></i> 15 min</span>
+            </div>
+          </div>
+          <button class="add-btn" onclick="addToCart('Losartana 50mg', 15.40)"><i class="fas fa-plus"></i></button>
+        </div>
+        <div class="med-card">
+          <div class="med-icon green"><i class="fas fa-pills"></i></div>
+          <div class="med-info">
+            <strong>Omeprazol 20mg</strong>
+            <span class="med-lab">Neo Química · 28 cápsulas</span>
+            <div class="med-meta">
+              <span class="price">R$ 12,70</span>
+              <span class="time"><i class="fas fa-clock"></i> 18 min</span>
+            </div>
+          </div>
+          <button class="add-btn" onclick="addToCart('Omeprazol 20mg', 12.70)"><i class="fas fa-plus"></i></button>
+        </div>
+        <div class="med-card">
+          <div class="med-icon orange"><i class="fas fa-prescription-bottle-alt"></i></div>
+          <div class="med-info">
+            <strong>Amoxicilina 500mg</strong>
+            <span class="med-lab">EMS · 21 cápsulas · <span class="badge-rx">Receita</span></span>
+            <div class="med-meta">
+              <span class="price">R$ 22,90</span>
+              <span class="time"><i class="fas fa-clock"></i> 20 min</span>
+            </div>
+          </div>
+          <button class="add-btn" onclick="addToCart('Amoxicilina 500mg', 22.90)"><i class="fas fa-plus"></i></button>
+        </div>
+        <div class="med-card">
+          <div class="med-icon purple"><i class="fas fa-syringe"></i></div>
+          <div class="med-info">
+            <strong>Insulina NPH 100UI</strong>
+            <span class="med-lab">Novo Nordisk · <span class="badge-rx">Receita</span></span>
+            <div class="med-meta">
+              <span class="price">R$ 48,00</span>
+              <span class="time"><i class="fas fa-clock"></i> 25 min</span>
+            </div>
+          </div>
+          <button class="add-btn" onclick="addToCart('Insulina NPH', 48.00)"><i class="fas fa-plus"></i></button>
+        </div>
+      </div>
+    </main>
+    <nav class="bottom-nav">
+      <button class="nav-item" onclick="showScreen('home')"><i class="fas fa-home"></i><span>Início</span></button>
+      <button class="nav-item active" onclick="showScreen('search')"><i class="fas fa-search"></i><span>Buscar</span></button>
+      <button class="nav-item" onclick="showScreen('prescription')"><i class="fas fa-file-medical"></i><span>Receita</span></button>
+      <button class="nav-item" onclick="showScreen('cart')"><i class="fas fa-shopping-bag"></i><span>Carrinho</span><span class="badge" id="cart-badge-2">0</span></button>
+      <button class="nav-item" onclick="showScreen('orders')"><i class="fas fa-motorcycle"></i><span>Pedidos</span></button>
+    </nav>
+  </div>
+
+  <!-- ==================== PRODUCT DETAIL ==================== -->
+  <div id="product" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('search')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Detalhes</h2>
+      <button class="icon-btn"><i class="fas fa-share-alt"></i></button>
+    </header>
+    <main class="app-content">
+      <div class="product-hero">
+        <div class="product-icon"><i class="fas fa-capsules"></i></div>
+        <h2>Dipirona Monoidratada 500mg</h2>
+        <p class="product-lab">EMS · 20 comprimidos</p>
+        <div class="product-price">R$ 8,90</div>
+        <div class="product-tags">
+          <span class="tag">Sem receita</span>
+          <span class="tag green">Entrega 12 min</span>
+        </div>
+      </div>
+      <div class="product-section">
+        <h3>Descrição</h3>
+        <p>Analgésico e antitérmico indicado para o alívio da dor e da febre. Uso adulto e pediátrico acima de 15 anos.</p>
+      </div>
+      <div class="product-section">
+        <h3>Disponível em</h3>
+        <div class="pharmacy-option selected">
+          <div>
+            <strong>Drogasil Paulista</strong>
+            <span>0,8 km · 4.9 ★</span>
+          </div>
+          <span class="price">R$ 8,90</span>
+        </div>
+        <div class="pharmacy-option">
+          <div>
+            <strong>Droga Raia Consolação</strong>
+            <span>1,2 km · 4.8 ★</span>
+          </div>
+          <span class="price">R$ 9,20</span>
+        </div>
+      </div>
+    </main>
+    <div class="bottom-bar">
+      <div class="qty-selector">
+        <button onclick="changeQty(-1)">−</button>
+        <span id="qty">1</span>
+        <button onclick="changeQty(1)">+</button>
+      </div>
+      <button class="btn btn-primary" onclick="addToCart('Dipirona 500mg', 8.90); showScreen('cart')">
+        Adicionar · R$ <span id="total-price">8,90</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== PRESCRIPTION UPLOAD ==================== -->
+  <div id="prescription" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('home')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Enviar receita</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div class="rx-hero">
+        <i class="fas fa-file-medical"></i>
+        <h3>Envie sua receita médica</h3>
+        <p>Tire uma foto nítida ou envie o PDF da receita digital. Validamos em até 2 minutos.</p>
+      </div>
+      <div class="upload-area" onclick="document.getElementById('rx-file').click()">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <strong>Toque para enviar</strong>
+        <span>JPG, PNG ou PDF · máx. 10MB</span>
+        <input type="file" id="rx-file" accept="image/*,.pdf" hidden onchange="handleRxUpload()">
+      </div>
+      <div id="rx-preview" class="rx-preview hidden">
+        <div class="rx-file">
+          <i class="fas fa-file-pdf"></i>
+          <div>
+            <strong id="rx-name">receita.pdf</strong>
+            <span>Enviado com sucesso</span>
+          </div>
+          <button class="icon-btn" onclick="removeRx()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="rx-status">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span>Validando com farmacêutico...</span>
+        </div>
+      </div>
+      <div class="info-box">
+        <i class="fas fa-info-circle"></i>
+        <p>Medicamentos controlados exigem receita válida e documento do paciente. O farmacêutico pode solicitar dados adicionais.</p>
+      </div>
+    </main>
+    <nav class="bottom-nav">
+      <button class="nav-item" onclick="showScreen('home')"><i class="fas fa-home"></i><span>Início</span></button>
+      <button class="nav-item" onclick="showScreen('search')"><i class="fas fa-search"></i><span>Buscar</span></button>
+      <button class="nav-item active" onclick="showScreen('prescription')"><i class="fas fa-file-medical"></i><span>Receita</span></button>
+      <button class="nav-item" onclick="showScreen('cart')"><i class="fas fa-shopping-bag"></i><span>Carrinho</span><span class="badge">0</span></button>
+      <button class="nav-item" onclick="showScreen('orders')"><i class="fas fa-motorcycle"></i><span>Pedidos</span></button>
+    </nav>
+  </div>
+
+  <!-- ==================== CART ==================== -->
+  <div id="cart" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('home')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Carrinho</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div id="cart-empty" class="empty-state">
+        <i class="fas fa-shopping-bag"></i>
+        <h3>Seu carrinho está vazio</h3>
+        <p>Adicione medicamentos para continuar</p>
+        <button class="btn btn-primary" onclick="showScreen('search')">Buscar remédios</button>
+      </div>
+      <div id="cart-items" class="hidden">
+        <div class="cart-list" id="cart-list"></div>
+        <div class="cart-summary">
+          <div class="summary-row">
+            <span>Subtotal</span>
+            <span id="subtotal">R$ 0,00</span>
+          </div>
+          <div class="summary-row">
+            <span>Taxa de entrega</span>
+            <span>R$ 5,90</span>
+          </div>
+          <div class="summary-row total">
+            <span>Total</span>
+            <span id="total">R$ 5,90</span>
+          </div>
+        </div>
+        <div class="delivery-info">
+          <i class="fas fa-map-marker-alt"></i>
+          <div>
+            <strong>Av. Paulista, 1000</strong>
+            <span>Entrega estimada: 15-20 min</span>
+          </div>
+          <button class="link">Alterar</button>
+        </div>
+      </div>
+    </main>
+    <div class="bottom-bar" id="cart-footer" style="display:none">
+      <button class="btn btn-primary btn-block" onclick="showScreen('checkout')">
+        Finalizar pedido · <span id="checkout-total">R$ 0,00</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== CHECKOUT ==================== -->
+  <div id="checkout" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('cart')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Pagamento</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div class="checkout-section">
+        <h3>Forma de pagamento</h3>
+        <div class="payment-options">
+          <label class="payment-option selected">
+            <input type="radio" name="payment" checked>
+            <i class="fas fa-credit-card"></i>
+            <span>Cartão de crédito</span>
+          </label>
+          <label class="payment-option">
+            <input type="radio" name="payment">
+            <i class="fas fa-qrcode"></i>
+            <span>Pix</span>
+          </label>
+          <label class="payment-option">
+            <input type="radio" name="payment">
+            <i class="fas fa-money-bill-wave"></i>
+            <span>Dinheiro</span>
+          </label>
+        </div>
+      </div>
+      <div class="checkout-section">
+        <h3>Dados do cartão</h3>
+        <div class="form-group">
+          <input type="text" placeholder="Número do cartão">
+        </div>
+        <div class="form-row-2">
+          <input type="text" placeholder="MM/AA">
+          <input type="text" placeholder="CVV">
+        </div>
+        <div class="form-group">
+          <input type="text" placeholder="Nome no cartão">
+        </div>
+      </div>
+      <div class="checkout-section">
+        <h3>Resumo</h3>
+        <div class="summary-row"><span>Subtotal</span><span id="co-sub">R$ 0,00</span></div>
+        <div class="summary-row"><span>Entrega</span><span>R$ 5,90</span></div>
+        <div class="summary-row total"><span>Total</span><span id="co-total">R$ 5,90</span></div>
+      </div>
+    </main>
+    <div class="bottom-bar">
+      <button class="btn btn-primary btn-block" onclick="placeOrder()">
+        Confirmar pedido
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== ORDER TRACKING ==================== -->
+  <div id="tracking" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('orders')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Pedido #48291</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div class="tracking-status">
+        <div class="status-icon"><i class="fas fa-motorcycle"></i></div>
+        <h3>Saiu para entrega</h3>
+        <p>Chegada estimada em <strong>8 minutos</strong></p>
+      </div>
+      <div class="tracking-map">
+        <div class="map-placeholder">
+          <i class="fas fa-map-marked-alt"></i>
+          <span>Mapa em tempo real</span>
+        </div>
+      </div>
+      <div class="tracking-steps">
+        <div class="t-step done">
+          <div class="t-dot"></div>
+          <div>
+            <strong>Pedido confirmado</strong>
+            <span>14:32</span>
+          </div>
+        </div>
+        <div class="t-step done">
+          <div class="t-dot"></div>
+          <div>
+            <strong>Farmácia separando</strong>
+            <span>14:35</span>
+          </div>
+        </div>
+        <div class="t-step active">
+          <div class="t-dot"></div>
+          <div>
+            <strong>Saiu para entrega</strong>
+            <span>14:48</span>
+          </div>
+        </div>
+        <div class="t-step">
+          <div class="t-dot"></div>
+          <div>
+            <strong>Entregue</strong>
+            <span>—</span>
+          </div>
+        </div>
+      </div>
+      <div class="courier-card">
+        <div class="courier-avatar"><i class="fas fa-user"></i></div>
+        <div>
+          <strong>Carlos Silva</strong>
+          <span>Entregador · 4.9 ★</span>
+        </div>
+        <button class="icon-btn"><i class="fas fa-phone"></i></button>
+        <button class="icon-btn"><i class="fas fa-comment"></i></button>
+      </div>
+    </main>
+  </div>
+
+  <!-- ==================== ORDERS ==================== -->
+  <div id="orders" class="screen app-screen">
+    <header class="app-header simple">
+      <h2>Meus pedidos</h2>
+    </header>
+    <main class="app-content">
+      <div class="order-tabs">
+        <button class="tab active">Em andamento</button>
+        <button class="tab">Anteriores</button>
+      </div>
+      <div class="order-card" onclick="showScreen('tracking')">
+        <div class="order-header">
+          <span class="order-id">#48291</span>
+          <span class="order-status active">A caminho</span>
+        </div>
+        <div class="order-items">Dipirona 500mg · Losartana 50mg</div>
+        <div class="order-footer">
+          <span>Hoje · 14:32</span>
+          <strong>R$ 30,20</strong>
+        </div>
+      </div>
+      <div class="order-card">
+        <div class="order-header">
+          <span class="order-id">#48102</span>
+          <span class="order-status done">Entregue</span>
+        </div>
+        <div class="order-items">Omeprazol 20mg</div>
+        <div class="order-footer">
+          <span>Ontem · 19:15</span>
+          <strong>R$ 18,60</strong>
+        </div>
+      </div>
+    </main>
+    <nav class="bottom-nav">
+      <button class="nav-item" onclick="showScreen('home')"><i class="fas fa-home"></i><span>Início</span></button>
+      <button class="nav-item" onclick="showScreen('search')"><i class="fas fa-search"></i><span>Buscar</span></button>
+      <button class="nav-item" onclick="showScreen('prescription')"><i class="fas fa-file-medical"></i><span>Receita</span></button>
+      <button class="nav-item" onclick="showScreen('cart')"><i class="fas fa-shopping-bag"></i><span>Carrinho</span><span class="badge">0</span></button>
+      <button class="nav-item active" onclick="showScreen('orders')"><i class="fas fa-motorcycle"></i><span>Pedidos</span></button>
+    </nav>
+  </div>
+
+  <!-- ==================== PROFILE ==================== -->
+  <div id="profile" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('home')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Meu perfil</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div class="profile-header">
+        <div class="profile-avatar"><i class="fas fa-user"></i></div>
+        <h3>Maria Santos</h3>
+        <p>maria.santos@email.com</p>
+      </div>
+      <div class="menu-list">
+        <a href="#" class="menu-item"><i class="fas fa-map-marker-alt"></i> Endereços <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item"><i class="fas fa-credit-card"></i> Formas de pagamento <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item"><i class="fas fa-file-medical"></i> Minhas receitas <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item"><i class="fas fa-bell"></i> Notificações <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item"><i class="fas fa-headset"></i> Ajuda e suporte <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item"><i class="fas fa-shield-alt"></i> Privacidade <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item danger" onclick="showScreen('landing')"><i class="fas fa-sign-out-alt"></i> Sair</a>
+      </div>
+    </main>
+  </div>
+
+  <!-- ==================== PHARMACY LOGIN ==================== -->
+  <div id="pharmacy-login" class="screen">
+    <div class="auth-container">
+      <button class="back-btn" onclick="showScreen('landing')"><i class="fas fa-arrow-left"></i></button>
+      <div class="auth-card">
+        <div class="logo logo-lg"><i class="fas fa-store"></i> FarmGo Parceiros</div>
+        <h2>Área da Farmácia</h2>
+        <p class="auth-subtitle">Gerencie pedidos e estoque</p>
+        <form onsubmit="event.preventDefault(); showScreen('pharmacy-dashboard')">
+          <div class="form-group">
+            <label>CNPJ ou e-mail</label>
+            <input type="text" placeholder="00.000.000/0001-00" required>
+          </div>
+          <div class="form-group">
+            <label>Senha</label>
+            <input type="password" placeholder="••••••••" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Acessar painel</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PHARMACY DASHBOARD ==================== -->
+  <div id="pharmacy-dashboard" class="screen app-screen pharmacy">
+    <header class="app-header">
+      <div class="app-header-top">
+        <div>
+          <small>Farmácia</small>
+          <strong>Drogasil Paulista</strong>
+        </div>
+        <button class="icon-btn" onclick="showScreen('landing')"><i class="fas fa-sign-out-alt"></i></button>
+      </div>
+    </header>
+    <main class="app-content">
+      <div class="dash-stats">
+        <div class="dash-stat">
+          <strong>12</strong>
+          <span>Pedidos hoje</span>
+        </div>
+        <div class="dash-stat">
+          <strong>R$ 1.240</strong>
+          <span>Faturamento</span>
+        </div>
+        <div class="dash-stat">
+          <strong>4</strong>
+          <span>Em preparo</span>
+        </div>
+      </div>
+      <h3 class="section-title-sm">Pedidos em andamento</h3>
+      <div class="order-card">
+        <div class="order-header">
+          <span class="order-id">#48291</span>
+          <span class="order-status active">Separar</span>
+        </div>
+        <div class="order-items">Dipirona 500mg ×2 · Losartana 50mg ×1</div>
+        <div class="order-footer">
+          <span>Cliente: Maria S.</span>
+          <button class="btn btn-sm btn-primary">Confirmar</button>
+        </div>
+      </div>
+      <div class="order-card">
+        <div class="order-header">
+          <span class="order-id">#48288</span>
+          <span class="order-status">Aguardando</span>
+        </div>
+        <div class="order-items">Amoxicilina 500mg ×1</div>
+        <div class="order-footer">
+          <span>Cliente: João P.</span>
+          <button class="btn btn-sm btn-outline">Ver receita</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
