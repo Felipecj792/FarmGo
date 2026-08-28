@@ -6,8 +6,10 @@
   <title>FarmGo — Delivery de Remédios</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
   <!-- ==================== LANDING PAGE ==================== -->
@@ -859,10 +861,8 @@
         <p id="track-status-sub">Acompanhe seu pedido</p>
       </div>
       <div class="tracking-map">
-        <div class="map-placeholder">
-          <i class="fas fa-map-marked-alt"></i>
-          <span>Mapa em tempo real</span>
-        </div>
+        <div id="track-map" class="track-map"></div>
+        <p id="track-map-hint" class="map-hint">Atualizando localização…</p>
       </div>
       <div class="tracking-steps" id="track-steps">
         <div class="t-step done">
