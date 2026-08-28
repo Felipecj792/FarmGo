@@ -652,6 +652,24 @@ body {
   font-size: 13px;
 }
 
+.form-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  background: #FEF2F2;
+  border-radius: 8px;
+}
+
+.form-success {
+  color: #059669;
+  font-size: 13px;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  background: #ECFDF5;
+  border-radius: 8px;
+}
+
 .auth-footer {
   text-align: center;
   margin-top: 24px;
@@ -1812,8 +1830,38 @@ body {
     display: none;
   }
 
+  .landing-header nav {
+    gap: 8px;
+  }
+
+  .landing-header .btn {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .landing-header .btn-outline {
+    display: none; /* Esconde "Entrar" no mobile — fica no menu */
+  }
+
   .mobile-menu-btn {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-left: 4px;
+  }
+
+  .logo {
+    font-size: 18px;
+  }
+
+  .logo i {
+    font-size: 22px;
+  }
+
+  .landing-header .container {
+    padding: 0 16px;
   }
 
   .farmacia-cta {
@@ -1838,4 +1886,52 @@ body {
   .auth-card {
     padding: 28px 20px;
   }
+
+  .landing-header .btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* Menu mobile dropdown */
+.mobile-nav {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border-bottom: 1px solid var(--gray-border);
+  padding: 12px 16px 16px;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--shadow);
+  z-index: 99;
+}
+
+.mobile-nav.open {
+  display: flex;
+}
+
+.mobile-nav a,
+.mobile-nav .btn {
+  width: 100%;
+  text-align: center;
+  padding: 12px;
+  font-size: 15px;
+}
+
+.mobile-nav a {
+  text-decoration: none;
+  color: var(--dark);
+  font-weight: 500;
+  border-radius: 10px;
+}
+
+.mobile-nav a:hover {
+  background: var(--gray-light);
+}
+
+.landing-header {
+  position: sticky;
 }
