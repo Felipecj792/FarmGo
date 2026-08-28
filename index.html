@@ -248,7 +248,7 @@
           <i class="fas fa-fingerprint"></i> Entrar com digital
         </button>
         <div class="divider"><span>ou</span></div>
-        <button class="btn btn-outline btn-block" onclick="showScreen('home')">
+        <button class="btn btn-outline btn-block" type="button" onclick="alert('Login Google em breve. Use e-mail e senha de 6 dígitos.')">
           <i class="fab fa-google"></i> Continuar com Google
         </button>
         <p class="auth-footer">Não tem conta? <a href="#" onclick="showScreen('register')">Cadastre-se grátis</a></p>
@@ -494,10 +494,10 @@
     </header>
     <main class="app-content">
       <div class="filters">
-        <button class="filter-chip active">Todos</button>
-        <button class="filter-chip">Com receita</button>
-        <button class="filter-chip">Genéricos</button>
-        <button class="filter-chip">Mais baratos</button>
+        <button class="filter-chip active" onclick="applySearchFilter('todos', this)">Todos</button>
+        <button class="filter-chip" onclick="applySearchFilter('receita', this)">Com receita</button>
+        <button class="filter-chip" onclick="applySearchFilter('genericos', this)">Genéricos</button>
+        <button class="filter-chip" onclick="applySearchFilter('baratos', this)">Mais baratos</button>
       </div>
       <div class="med-list" id="search-results">
         <!-- filled by JS or static -->
@@ -700,6 +700,8 @@
         <i class="fas fa-info-circle"></i>
         <p>Medicamentos controlados exigem receita válida e documento do paciente. O farmacêutico pode solicitar dados adicionais.</p>
       </div>
+      <h3 class="section-title-sm" style="margin-top:20px">Receitas enviadas</h3>
+      <div id="rx-history"></div>
     </main>
     <nav class="bottom-nav">
       <button class="nav-item" onclick="showScreen('home')"><i class="fas fa-home"></i><span>Início</span></button>
@@ -847,14 +849,14 @@
   <div id="tracking" class="screen app-screen">
     <header class="app-header simple">
       <button class="icon-btn" onclick="showScreen('orders')"><i class="fas fa-arrow-left"></i></button>
-      <h2>Pedido #48291</h2>
+      <h2 id="track-order-id">Pedido</h2>
       <div style="width:40px"></div>
     </header>
     <main class="app-content">
       <div class="tracking-status">
         <div class="status-icon"><i class="fas fa-motorcycle"></i></div>
-        <h3>Saiu para entrega</h3>
-        <p>Chegada estimada em <strong>8 minutos</strong></p>
+        <h3 id="track-status-title">Preparando</h3>
+        <p id="track-status-sub">Acompanhe seu pedido</p>
       </div>
       <div class="tracking-map">
         <div class="map-placeholder">
@@ -862,7 +864,7 @@
           <span>Mapa em tempo real</span>
         </div>
       </div>
-      <div class="tracking-steps">
+      <div class="tracking-steps" id="track-steps">
         <div class="t-step done">
           <div class="t-dot"></div>
           <div>
@@ -895,7 +897,7 @@
       <div class="courier-card">
         <div class="courier-avatar"><i class="fas fa-user"></i></div>
         <div>
-          <strong>Carlos Silva</strong>
+          <strong id="track-driver-name">Aguardando motorista</strong>
           <span>Entregador · 4.9 ★</span>
         </div>
         <button class="icon-btn"><i class="fas fa-phone"></i></button>
@@ -911,31 +913,10 @@
     </header>
     <main class="app-content">
       <div class="order-tabs">
-        <button class="tab active">Em andamento</button>
-        <button class="tab">Anteriores</button>
+        <button class="tab active" onclick="renderOrdersList('active', this)">Em andamento</button>
+        <button class="tab" onclick="renderOrdersList('done', this)">Anteriores</button>
       </div>
-      <div class="order-card" onclick="showScreen('tracking')">
-        <div class="order-header">
-          <span class="order-id">#48291</span>
-          <span class="order-status active">A caminho</span>
-        </div>
-        <div class="order-items">Dipirona 500mg · Losartana 50mg</div>
-        <div class="order-footer">
-          <span>Hoje · 14:32</span>
-          <strong>R$ 30,20</strong>
-        </div>
-      </div>
-      <div class="order-card">
-        <div class="order-header">
-          <span class="order-id">#48102</span>
-          <span class="order-status done">Entregue</span>
-        </div>
-        <div class="order-items">Omeprazol 20mg</div>
-        <div class="order-footer">
-          <span>Ontem · 19:15</span>
-          <strong>R$ 18,60</strong>
-        </div>
-      </div>
+      <div id="orders-list"></div>
     </main>
     <nav class="bottom-nav">
       <button class="nav-item" onclick="showScreen('home')"><i class="fas fa-home"></i><span>Início</span></button>
@@ -958,16 +939,183 @@
         <div class="profile-avatar"><i class="fas fa-user"></i></div>
         <h3 id="profile-name">Usuário</h3>
         <p id="profile-email">email@email.com</p>
+        <p style="font-size:13px;color:var(--gray);margin-top:4px">
+          <span id="profile-phone">—</span> · CPF <span id="profile-cpf">—</span>
+        </p>
       </div>
       <div class="menu-list">
-        <a href="#" class="menu-item"><i class="fas fa-map-marker-alt"></i> Endereços <i class="fas fa-chevron-right"></i></a>
-        <a href="#" class="menu-item"><i class="fas fa-credit-card"></i> Formas de pagamento <i class="fas fa-chevron-right"></i></a>
-        <a href="#" class="menu-item"><i class="fas fa-file-medical"></i> Minhas receitas <i class="fas fa-chevron-right"></i></a>
-        <a href="#" class="menu-item"><i class="fas fa-bell"></i> Notificações <i class="fas fa-chevron-right"></i></a>
-        <a href="#" class="menu-item"><i class="fas fa-headset"></i> Ajuda e suporte <i class="fas fa-chevron-right"></i></a>
-        <a href="#" class="menu-item"><i class="fas fa-shield-alt"></i> Privacidade <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="showScreen('profile-edit')"><i class="fas fa-user-edit"></i> Editar dados <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="showScreen('profile-addresses')"><i class="fas fa-map-marker-alt"></i> Endereços <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="showScreen('profile-payment')"><i class="fas fa-wallet"></i> Formas de pagamento <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="showScreen('prescription')"><i class="fas fa-file-medical"></i> Minhas receitas <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="showScreen('profile-notifs')"><i class="fas fa-bell"></i> Notificações <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="showScreen('profile-help')"><i class="fas fa-headset"></i> Ajuda e suporte <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="showScreen('profile-privacy')"><i class="fas fa-shield-alt"></i> Privacidade <i class="fas fa-chevron-right"></i></a>
+        <a href="#" class="menu-item" onclick="disableBiometric()"><i class="fas fa-fingerprint"></i> Desativar digital</a>
         <a href="#" class="menu-item danger" onclick="handleLogout()"><i class="fas fa-sign-out-alt"></i> Sair</a>
       </div>
+    </main>
+  </div>
+
+  <!-- PROFILE EDIT -->
+  <div id="profile-edit" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('profile')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Editar dados</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <form onsubmit="saveProfileEdit(event)">
+        <div class="form-group">
+          <label>Nome completo</label>
+          <input type="text" id="edit-name" required>
+        </div>
+        <div class="form-group">
+          <label>Celular</label>
+          <input type="tel" id="edit-phone" placeholder="(11) 99999-9999">
+        </div>
+        <div class="form-group">
+          <label>CPF</label>
+          <input type="text" id="edit-cpf" placeholder="000.000.000-00">
+        </div>
+        <p id="profile-edit-msg" style="display:none"></p>
+        <button type="submit" class="btn btn-primary btn-block">Salvar</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- PROFILE ADDRESSES -->
+  <div id="profile-addresses" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('profile')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Endereços</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div id="address-list"></div>
+      <h3 class="section-title-sm" style="margin-top:16px">Adicionar endereço</h3>
+      <form id="address-form" onsubmit="addAddress(event)">
+        <div class="form-group">
+          <label>Apelido</label>
+          <input type="text" id="addr-label" placeholder="Casa, Trabalho...">
+        </div>
+        <div class="form-group">
+          <label>CEP</label>
+          <input type="text" id="addr-cep" placeholder="00000-000" oninput="formatCep(this)">
+        </div>
+        <div class="form-group">
+          <label>Rua</label>
+          <input type="text" id="addr-street" required>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Número</label>
+            <input type="text" id="addr-number" required>
+          </div>
+          <div class="form-group">
+            <label>Complemento</label>
+            <input type="text" id="addr-complement">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Bairro</label>
+          <input type="text" id="addr-neighborhood">
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Cidade</label>
+            <input type="text" id="addr-city" value="São Paulo">
+          </div>
+          <div class="form-group">
+            <label>UF</label>
+            <input type="text" id="addr-state" value="SP" maxlength="2">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Salvar endereço</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- PROFILE PAYMENT -->
+  <div id="profile-payment" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('profile')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Pagamento</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div class="order-card">
+        <div class="order-header">
+          <span class="order-id"><i class="fas fa-qrcode"></i> Pix</span>
+          <span class="order-status done">Ativo</span>
+        </div>
+        <div class="order-items">Pagamento instantâneo no checkout</div>
+      </div>
+      <div class="order-card">
+        <div class="order-header">
+          <span class="order-id"><i class="fas fa-money-bill-wave"></i> Dinheiro</span>
+          <span class="order-status done">Ativo</span>
+        </div>
+        <div class="order-items">Pague na entrega</div>
+      </div>
+      <p style="font-size:13px;color:var(--gray);margin-top:12px">Cartão de crédito não está disponível no momento.</p>
+    </main>
+  </div>
+
+  <!-- PROFILE NOTIFS -->
+  <div id="profile-notifs" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('profile')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Notificações</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <label class="menu-item" style="cursor:pointer">
+        <span><i class="fas fa-box"></i> Status do pedido</span>
+        <input type="checkbox" id="notif-orders" checked onchange="saveNotifPrefs()">
+      </label>
+      <label class="menu-item" style="cursor:pointer">
+        <span><i class="fas fa-tag"></i> Promoções e cupons</span>
+        <input type="checkbox" id="notif-promo" checked onchange="saveNotifPrefs()">
+      </label>
+      <p id="notif-msg" class="form-success" style="display:none;margin-top:12px"></p>
+    </main>
+  </div>
+
+  <!-- PROFILE HELP -->
+  <div id="profile-help" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('profile')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Ajuda</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <div class="order-card">
+        <strong>Central FarmGo</strong>
+        <p style="font-size:14px;color:var(--gray);margin:8px 0">Dúvidas sobre pedidos, receitas e entregas.</p>
+        <button class="btn btn-primary btn-block" onclick="alert('Suporte: suporte@farmgo.app\\nWhatsApp: (11) 4000-0000')">Falar com suporte</button>
+      </div>
+      <div class="order-card" style="margin-top:12px">
+        <strong>Perguntas frequentes</strong>
+        <p style="font-size:13px;margin-top:8px"><strong>Como envio a receita?</strong><br>Na aba Receita, envie foto ou PDF.</p>
+        <p style="font-size:13px;margin-top:8px"><strong>Qual o prazo de entrega?</strong><br>Varia por região; em média 15–25 min.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- PROFILE PRIVACY -->
+  <div id="profile-privacy" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('profile')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Privacidade</h2>
+      <div style="width:40px"></div>
+    </header>
+    <main class="app-content">
+      <p style="font-size:14px;color:var(--gray);line-height:1.6">
+        Seus dados são usados para pedidos, entrega e suporte. Seguimos a LGPD.
+        Você pode editar ou solicitar exclusão da conta pelo suporte.
+      </p>
+      <button class="btn btn-outline btn-block" style="margin-top:16px" onclick="alert('Solicitação de exclusão registrada. Nossa equipe entrará em contato.')">Solicitar exclusão de dados</button>
     </main>
   </div>
 
