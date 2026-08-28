@@ -38,8 +38,8 @@ async function handleRegister(event) {
   errorEl.style.display = 'none';
   successEl.style.display = 'none';
 
-  if (password.length < 8) {
-    errorEl.textContent = 'A senha deve ter no mínimo 8 caracteres.';
+  if (!/^[0-9]{6}$/.test(password)) {
+    errorEl.textContent = 'A senha deve ter exatamente 6 dígitos numéricos.';
     errorEl.style.display = 'block';
     return;
   }
@@ -81,11 +81,16 @@ async function handleRegister(event) {
     successEl.textContent = 'Conta criada com sucesso! Entrando...';
     successEl.style.display = 'block';
 
+    if (window.PublicKeyCredential) {
+      tryRegisterBiometric(email, password);
+    }
+
     setTimeout(() => {
       document.getElementById('register-form').reset();
       successEl.style.display = 'none';
       showScreen('home');
       updateProfileUI();
+      updateBiometricButton();
     }, 1200);
   } catch (err) {
     errorEl.textContent = 'Erro ao criar conta. Tente novamente.';
@@ -103,6 +108,12 @@ async function handleLogin(event) {
 
   errorEl.style.display = 'none';
 
+  if (!/^[0-9]{6}$/.test(password)) {
+    errorEl.textContent = 'A senha deve ter exatamente 6 dígitos.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
   const email = emailOrCpf.toLowerCase();
 
   try {
@@ -117,6 +128,11 @@ async function handleLogin(event) {
       return;
     }
 
+    // Oferece cadastrar digital após login bem-sucedido
+    if (window.PublicKeyCredential) {
+      tryRegisterBiometric(email, password);
+    }
+
     document.getElementById('login-form').reset();
     showScreen('home');
     updateProfileUI();
@@ -125,6 +141,139 @@ async function handleLogin(event) {
     errorEl.style.display = 'block';
     console.error(err);
   }
+}
+
+// ==================== BIOMETRIA (WebAuthn) ====================
+// Guarda credencial local + e-mail para desbloqueio por digital no mesmo aparelho
+
+function bufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let str = '';
+  bytes.forEach(b => { str += String.fromCharCode(b); });
+  return btoa(str);
+}
+
+function base64ToBuffer(base64) {
+  const str = atob(base64);
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function tryRegisterBiometric(email, password) {
+  try {
+    if (!window.PublicKeyCredential) return;
+    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if (!available) return;
+
+    // Já tem digital cadastrada para este e-mail?
+    const stored = JSON.parse(localStorage.getItem('farmgo_webauthn') || 'null');
+    if (stored && stored.email === email) return;
+
+    const ok = confirm('Deseja ativar o desbloqueio por digital neste aparelho?');
+    if (!ok) return;
+
+    const userId = new TextEncoder().encode(email);
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: 'FarmGo', id: location.hostname || 'localhost' },
+        user: {
+          id: userId,
+          name: email,
+          displayName: email
+        },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+        authenticatorSelection: {
+          authenticatorAttachment: 'platform',
+          userVerification: 'required',
+          residentKey: 'preferred'
+        },
+        timeout: 60000
+      }
+    });
+
+    if (!credential) return;
+
+    localStorage.setItem('farmgo_webauthn', JSON.stringify({
+      email,
+      password, // demo: necessário para login Supabase após digital
+      credentialId: bufferToBase64(credential.rawId)
+    }));
+
+    alert('Digital ativada! Na próxima vez use "Entrar com digital".');
+    updateBiometricButton();
+  } catch (e) {
+    console.warn('Biometria não disponível:', e);
+  }
+}
+
+async function loginWithBiometric() {
+  const errorEl = document.getElementById('login-error');
+  if (errorEl) errorEl.style.display = 'none';
+
+  try {
+    const stored = JSON.parse(localStorage.getItem('farmgo_webauthn') || 'null');
+    if (!stored || !stored.credentialId) {
+      alert('Nenhuma digital cadastrada. Entre com a senha de 6 dígitos primeiro.');
+      return;
+    }
+
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        allowCredentials: [{
+          id: base64ToBuffer(stored.credentialId),
+          type: 'public-key',
+          transports: ['internal']
+        }],
+        userVerification: 'required',
+        timeout: 60000
+      }
+    });
+
+    if (!assertion) {
+      if (errorEl) {
+        errorEl.textContent = 'Digital não reconhecida.';
+        errorEl.style.display = 'block';
+      }
+      return;
+    }
+
+    // Digital OK → login no Supabase com e-mail/senha guardados
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email: stored.email,
+      password: stored.password
+    });
+
+    if (error) {
+      if (errorEl) {
+        errorEl.textContent = 'Sessão expirada. Entre com a senha de 6 dígitos.';
+        errorEl.style.display = 'block';
+      }
+      return;
+    }
+
+    showScreen('home');
+    updateProfileUI();
+  } catch (e) {
+    console.warn(e);
+    if (errorEl) {
+      errorEl.textContent = 'Não foi possível usar a digital. Use a senha de 6 dígitos.';
+      errorEl.style.display = 'block';
+    }
+  }
+}
+
+function updateBiometricButton() {
+  const btn = document.getElementById('btn-biometric');
+  if (!btn) return;
+  const stored = localStorage.getItem('farmgo_webauthn');
+  const supported = !!(window.PublicKeyCredential);
+  btn.style.display = (supported && stored) ? 'flex' : 'none';
 }
 
 async function handleForgotPassword(event) {
@@ -547,8 +696,7 @@ function openProduct(id) {
 
   const tagsEl = document.getElementById('prod-tags');
   tagsEl.innerHTML =
-    (p.needsRx ? '<span class="tag" style="background:#FEF3C7;color:#D97706">Com receita</span>' : '<span class="tag">Sem receita</span>') +
-    '<span class="tag green">Entrega ' + p.time + '</span>';
+    (p.needsRx ? '<span class="tag" style="background:#FEF3C7;color:#D97706">Com receita</span>' : '<span class="tag">Sem receita</span>');
 
   showScreen('product');
 }
@@ -760,6 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateCartBadges();
   checkSession();
   updateFirstPurchaseUI();
+  updateBiometricButton();
 
   document.querySelectorAll('.payment-option').forEach(opt => {
     opt.addEventListener('click', () => {
@@ -767,10 +916,6 @@ document.addEventListener('DOMContentLoaded', () => {
       opt.classList.add('selected');
       const input = opt.querySelector('input');
       if (input) input.checked = true;
-      const cardFields = document.getElementById('card-fields');
-      if (cardFields) {
-        cardFields.style.display = input && input.value === 'card' ? 'block' : 'none';
-      }
     });
   });
 });
