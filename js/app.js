@@ -7,7 +7,11 @@ function showScreen(id) {
     window.scrollTo(0, 0);
   }
   updateCartBadges();
-  if (id === 'profile') updateProfileUI();
+  if (id === 'profile' || id === 'profile-edit' || id === 'profile-addresses' || id === 'profile-notifs') updateProfileUI();
+  if (id === 'orders') renderOrdersList('active');
+  if (id === 'prescription') renderRxHistory();
+  if (id === 'pharmacy-dashboard') refreshPharmacyFromOrders();
+  if (id === 'driver-dashboard') refreshDriverFromOrders();
   if (id === 'checkout' || id === 'cart') updateTotals();
   if (id === 'home') updateFirstPurchaseUI();
 }
@@ -38,6 +42,12 @@ async function handleRegister(event) {
   errorEl.style.display = 'none';
   successEl.style.display = 'none';
 
+  if (!name) {
+    errorEl.textContent = 'Informe seu nome completo.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
   if (!/^[0-9]{6}$/.test(password)) {
     errorEl.textContent = 'A senha deve ter exatamente 6 dígitos numéricos.';
     errorEl.style.display = 'block';
@@ -50,22 +60,65 @@ async function handleRegister(event) {
       password,
       options: {
         data: {
-          name,
-          cpf,
-          phone
+          name: name,
+          full_name: name,
+          cpf: cpf,
+          phone: phone
         }
       }
     });
 
     if (error) {
-      errorEl.textContent = error.message === 'User already registered'
-        ? 'Este e-mail já está cadastrado. Faça login.'
-        : error.message;
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('already') || msg.includes('registered')) {
+        errorEl.textContent = 'Este e-mail já está cadastrado. Faça login.';
+      } else if (msg.includes('password')) {
+        errorEl.textContent = 'Senha inválida. Use 6 dígitos. (Confira a política de senha no Supabase)';
+      } else {
+        errorEl.textContent = error.message || 'Erro ao criar conta.';
+      }
       errorEl.style.display = 'block';
       return;
     }
 
-    if (data.user) {
+    // Conta já existia (Supabase às vezes retorna user sem identities)
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      errorEl.textContent = 'Este e-mail já está cadastrado. Faça login.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // Garante sessão: se confirm email estiver ligado, tenta login na hora
+    let session = data.session;
+    if (!session) {
+      const { data: loginData, error: loginErr } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
+      if (loginErr) {
+        successEl.textContent = 'Conta criada! Ative o login: no Supabase → Authentication → Providers → Email → desative "Confirm email". Depois entre com seu e-mail e senha.';
+        successEl.style.display = 'block';
+        return;
+      }
+      session = loginData.session;
+    }
+
+    // Atualiza metadata do nome (garante que fica salvo)
+    await supabaseClient.auth.updateUser({
+      data: { name: name, full_name: name, cpf: cpf, phone: phone }
+    });
+
+    // Cache local do perfil (backup + perfil offline)
+    saveLocalProfile({
+      id: data.user?.id,
+      name,
+      email,
+      cpf,
+      phone
+    });
+
+    // Tenta salvar na tabela profiles (opcional)
+    if (data.user?.id) {
       try {
         await supabaseClient.from('profiles').upsert({
           id: data.user.id,
@@ -74,15 +127,16 @@ async function handleRegister(event) {
           phone
         });
       } catch (e) {
-        console.warn('profiles table:', e);
+        console.warn('profiles:', e);
       }
     }
 
     successEl.textContent = 'Conta criada com sucesso! Entrando...';
     successEl.style.display = 'block';
 
+    biometricUnlocked = true;
     if (window.PublicKeyCredential) {
-      tryRegisterBiometric(email, password);
+      tryRegisterBiometric(email);
     }
 
     setTimeout(() => {
@@ -91,9 +145,9 @@ async function handleRegister(event) {
       showScreen('home');
       updateProfileUI();
       updateBiometricButton();
-    }, 1200);
+    }, 800);
   } catch (err) {
-    errorEl.textContent = 'Erro ao criar conta. Tente novamente.';
+    errorEl.textContent = 'Erro de conexão. Verifique a internet e o Supabase.';
     errorEl.style.display = 'block';
     console.error(err);
   }
@@ -114,7 +168,18 @@ async function handleLogin(event) {
     return;
   }
 
-  const email = emailOrCpf.toLowerCase();
+  // Login por e-mail (CPF só se estiver no perfil local)
+  let email = emailOrCpf.toLowerCase();
+  if (!email.includes('@')) {
+    const local = getLocalProfile();
+    if (local && (local.cpf === emailOrCpf || local.cpf === emailOrCpf.replace(/\D/g, ''))) {
+      email = local.email;
+    } else {
+      errorEl.textContent = 'Use o e-mail cadastrado para entrar.';
+      errorEl.style.display = 'block';
+      return;
+    }
+  }
 
   try {
     const { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -123,91 +188,206 @@ async function handleLogin(event) {
     });
 
     if (error) {
-      errorEl.textContent = 'E-mail ou senha incorretos.';
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('confirm') || msg.includes('email not confirmed')) {
+        errorEl.textContent = 'Confirme o e-mail ou desative "Confirm email" no Supabase (Authentication → Providers → Email).';
+      } else if (msg.includes('invalid')) {
+        errorEl.textContent = 'E-mail ou senha incorretos.';
+      } else {
+        errorEl.textContent = error.message || 'E-mail ou senha incorretos.';
+      }
       errorEl.style.display = 'block';
       return;
     }
 
-    // Oferece cadastrar digital após login bem-sucedido
+    const user = data.user;
+    const meta = user?.user_metadata || {};
+    const local = getLocalProfile() || {};
+    saveLocalProfile({
+      id: user.id,
+      name: meta.name || meta.full_name || local.name || email.split('@')[0],
+      email: user.email,
+      cpf: meta.cpf || local.cpf || '',
+      phone: meta.phone || local.phone || ''
+    });
+
+    biometricUnlocked = true;
+
     if (window.PublicKeyCredential) {
-      tryRegisterBiometric(email, password);
+      tryRegisterBiometric(email);
     }
 
     document.getElementById('login-form').reset();
     showScreen('home');
     updateProfileUI();
+    updateBiometricButton();
   } catch (err) {
-    errorEl.textContent = 'Erro ao entrar. Tente novamente.';
+    errorEl.textContent = 'Erro de conexão. Tente novamente.';
     errorEl.style.display = 'block';
     console.error(err);
   }
 }
 
-// ==================== BIOMETRIA (WebAuthn) ====================
-// Guarda credencial local + e-mail para desbloqueio por digital no mesmo aparelho
+// ==================== BIOMETRIA SEGURA (WebAuthn) ====================
+// Nunca armazena senha. A digital desbloqueia a sessão já autenticada no Supabase
+// (refresh token gerenciado pelo client). Credencial fica no autenticador do aparelho.
 
-function bufferToBase64(buffer) {
+const BIOMETRIC_KEY = 'farmgo_webauthn_v2';
+let biometricUnlocked = false;
+
+function bufferToBase64url(buffer) {
   const bytes = new Uint8Array(buffer);
   let str = '';
   bytes.forEach(b => { str += String.fromCharCode(b); });
-  return btoa(str);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function base64ToBuffer(base64) {
+function base64urlToBuffer(base64url) {
+  const pad = '='.repeat((4 - (base64url.length % 4)) % 4);
+  const base64 = (base64url + pad).replace(/-/g, '+').replace(/_/g, '/');
   const str = atob(base64);
   const bytes = new Uint8Array(str.length);
   for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
   return bytes.buffer;
 }
 
-async function tryRegisterBiometric(email, password) {
+function getBiometricConfig() {
   try {
-    if (!window.PublicKeyCredential) return;
-    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-    if (!available) return;
+    return JSON.parse(localStorage.getItem(BIOMETRIC_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
 
-    // Já tem digital cadastrada para este e-mail?
-    const stored = JSON.parse(localStorage.getItem('farmgo_webauthn') || 'null');
-    if (stored && stored.email === email) return;
+function setBiometricConfig(cfg) {
+  localStorage.setItem(BIOMETRIC_KEY, JSON.stringify(cfg));
+}
 
-    const ok = confirm('Deseja ativar o desbloqueio por digital neste aparelho?');
+function clearBiometricConfig() {
+  localStorage.removeItem(BIOMETRIC_KEY);
+  // limpa versão antiga insegura (com senha)
+  localStorage.removeItem('farmgo_webauthn');
+}
+
+async function isBiometricAvailable() {
+  if (!window.PublicKeyCredential) return false;
+  try {
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch {
+    return false;
+  }
+}
+
+function getRpId() {
+  const host = location.hostname;
+  if (!host || host === 'localhost' || host === '127.0.0.1') return 'localhost';
+  return host;
+}
+
+async function tryRegisterBiometric(email) {
+  try {
+    if (!(await isBiometricAvailable())) return;
+
+    const existing = getBiometricConfig();
+    if (existing && existing.email === email && existing.credentialId) {
+      updateBiometricButton();
+      return;
+    }
+
+    // Só registra com sessão Supabase ativa
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) return;
+
+    const ok = confirm(
+      'Ativar desbloqueio por digital neste aparelho?\n\n' +
+      'Sua senha NÃO será salva. A digital só funciona neste dispositivo.'
+    );
     if (!ok) return;
 
-    const userId = new TextEncoder().encode(email);
+    const userId = crypto.getRandomValues(new Uint8Array(16));
     const challenge = crypto.getRandomValues(new Uint8Array(32));
 
     const credential = await navigator.credentials.create({
       publicKey: {
         challenge,
-        rp: { name: 'FarmGo', id: location.hostname || 'localhost' },
+        rp: { name: 'FarmGo', id: getRpId() },
         user: {
           id: userId,
           name: email,
-          displayName: email
+          displayName: email.split('@')[0] || 'Usuário FarmGo'
         },
-        pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+        pubKeyCredParams: [
+          { alg: -7, type: 'public-key' },
+          { alg: -257, type: 'public-key' }
+        ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform',
           userVerification: 'required',
-          residentKey: 'preferred'
+          residentKey: 'required',
+          requireResidentKey: true
         },
-        timeout: 60000
+        timeout: 90000,
+        attestation: 'none'
       }
     });
 
     if (!credential) return;
 
-    localStorage.setItem('farmgo_webauthn', JSON.stringify({
+    setBiometricConfig({
+      version: 2,
       email,
-      password, // demo: necessário para login Supabase após digital
-      credentialId: bufferToBase64(credential.rawId)
-    }));
+      userId: session.user.id,
+      credentialId: bufferToBase64url(credential.rawId),
+      createdAt: new Date().toISOString()
+      // NUNCA grava senha
+    });
 
-    alert('Digital ativada! Na próxima vez use "Entrar com digital".');
+    biometricUnlocked = true;
+    alert('Digital ativada com segurança neste aparelho.');
     updateBiometricButton();
   } catch (e) {
-    console.warn('Biometria não disponível:', e);
+    console.warn('Falha ao registrar biometria:', e);
+    if (e && e.name === 'NotAllowedError') {
+      // usuário cancelou
+    } else if (location.protocol === 'file:') {
+      alert('Biometria exige HTTPS (ou localhost). Abra o site por um servidor/hosting.');
+    }
   }
+}
+
+async function verifyBiometric() {
+  const stored = getBiometricConfig();
+  if (!stored || !stored.credentialId) {
+    throw new Error('NO_CREDENTIAL');
+  }
+
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId: getRpId(),
+      allowCredentials: [{
+        id: base64urlToBuffer(stored.credentialId),
+        type: 'public-key',
+        transports: ['internal']
+      }],
+      userVerification: 'required',
+      timeout: 90000
+    }
+  });
+
+  if (!assertion || !assertion.rawId) {
+    throw new Error('FAILED');
+  }
+
+  // Confere se a credencial usada é a registrada
+  const usedId = bufferToBase64url(assertion.rawId);
+  if (usedId !== stored.credentialId) {
+    throw new Error('MISMATCH');
+  }
+
+  return stored;
 }
 
 async function loginWithBiometric() {
@@ -215,54 +395,52 @@ async function loginWithBiometric() {
   if (errorEl) errorEl.style.display = 'none';
 
   try {
-    const stored = JSON.parse(localStorage.getItem('farmgo_webauthn') || 'null');
-    if (!stored || !stored.credentialId) {
-      alert('Nenhuma digital cadastrada. Entre com a senha de 6 dígitos primeiro.');
-      return;
-    }
-
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge,
-        allowCredentials: [{
-          id: base64ToBuffer(stored.credentialId),
-          type: 'public-key',
-          transports: ['internal']
-        }],
-        userVerification: 'required',
-        timeout: 60000
-      }
-    });
-
-    if (!assertion) {
+    if (!(await isBiometricAvailable())) {
       if (errorEl) {
-        errorEl.textContent = 'Digital não reconhecida.';
+        errorEl.textContent = 'Biometria não disponível neste aparelho/navegador.';
         errorEl.style.display = 'block';
       }
       return;
     }
 
-    // Digital OK → login no Supabase com e-mail/senha guardados
-    const { error } = await supabaseClient.auth.signInWithPassword({
-      email: stored.email,
-      password: stored.password
-    });
+    await verifyBiometric();
 
-    if (error) {
-      if (errorEl) {
-        errorEl.textContent = 'Sessão expirada. Entre com a senha de 6 dígitos.';
-        errorEl.style.display = 'block';
+    // Digital OK → tenta restaurar sessão Supabase (sem senha)
+    const { data: { session }, error: sessErr } = await supabaseClient.auth.getSession();
+    if (sessErr) console.warn(sessErr);
+
+    if (session) {
+      const { data: refreshed, error: refErr } = await supabaseClient.auth.refreshSession();
+      if (refErr || !refreshed.session) {
+        // sessão inválida
+        biometricUnlocked = false;
+        if (errorEl) {
+          errorEl.textContent = 'Sessão expirada. Entre com a senha de 6 dígitos.';
+          errorEl.style.display = 'block';
+        }
+        return;
       }
+      biometricUnlocked = true;
+      showScreen('home');
+      updateProfileUI();
       return;
     }
 
-    showScreen('home');
-    updateProfileUI();
+    // Sem sessão ativa: biometria sozinha não recria login (isso é seguro)
+    if (errorEl) {
+      errorEl.textContent = 'Sessão encerrada. Entre com a senha de 6 dígitos uma vez; depois a digital funciona de novo.';
+      errorEl.style.display = 'block';
+    }
   } catch (e) {
     console.warn(e);
     if (errorEl) {
-      errorEl.textContent = 'Não foi possível usar a digital. Use a senha de 6 dígitos.';
+      if (e.message === 'NO_CREDENTIAL') {
+        errorEl.textContent = 'Nenhuma digital cadastrada. Entre com a senha e ative a digital.';
+      } else if (e.name === 'NotAllowedError') {
+        errorEl.textContent = 'Autenticação cancelada ou digital não reconhecida.';
+      } else {
+        errorEl.textContent = 'Falha na biometria. Use a senha de 6 dígitos.';
+      }
       errorEl.style.display = 'block';
     }
   }
@@ -271,9 +449,25 @@ async function loginWithBiometric() {
 function updateBiometricButton() {
   const btn = document.getElementById('btn-biometric');
   if (!btn) return;
-  const stored = localStorage.getItem('farmgo_webauthn');
+  const stored = getBiometricConfig();
   const supported = !!(window.PublicKeyCredential);
-  btn.style.display = (supported && stored) ? 'flex' : 'none';
+  btn.style.display = (supported && stored && stored.credentialId) ? 'flex' : 'none';
+}
+
+async function requireBiometricIfEnabled() {
+  const stored = getBiometricConfig();
+  if (!stored || !stored.credentialId || biometricUnlocked) return true;
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return true; // sem sessão, fluxo normal de login
+
+  try {
+    await verifyBiometric();
+    biometricUnlocked = true;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function handleForgotPassword(event) {
@@ -353,24 +547,218 @@ function showPharmTab(tab, btn) {
 
 async function handleLogout() {
   await supabaseClient.auth.signOut();
+  biometricUnlocked = false;
   cart = [];
   updateCartUI();
+  updateBiometricButton();
   showScreen('landing');
+}
+
+function disableBiometric() {
+  clearBiometricConfig();
+  biometricUnlocked = false;
+  updateBiometricButton();
+  alert('Desbloqueio por digital desativado neste aparelho.');
+}
+
+function getLocalProfile() {
+  try {
+    return JSON.parse(localStorage.getItem('farmgo_profile') || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalProfile(profile) {
+  const prev = getLocalProfile() || {};
+  const next = { ...prev, ...profile };
+  localStorage.setItem('farmgo_profile', JSON.stringify(next));
+  return next;
+}
+
+function getAddresses() {
+  try {
+    return JSON.parse(localStorage.getItem('farmgo_addresses') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveAddresses(list) {
+  localStorage.setItem('farmgo_addresses', JSON.stringify(list));
 }
 
 async function updateProfileUI() {
   const nameEl = document.getElementById('profile-name');
   const emailEl = document.getElementById('profile-email');
+  const phoneEl = document.getElementById('profile-phone');
+  const cpfEl = document.getElementById('profile-cpf');
 
-  const { data: { user } } = await supabaseClient.auth.getUser();
+  let name = 'Usuário';
+  let email = '';
+  let phone = '';
+  let cpf = '';
 
-  if (user) {
-    const meta = user.user_metadata || {};
-    if (nameEl) nameEl.textContent = meta.name || user.email?.split('@')[0] || 'Usuário';
-    if (emailEl) emailEl.textContent = user.email || '';
-  } else {
-    if (nameEl) nameEl.textContent = 'Usuário';
-    if (emailEl) emailEl.textContent = 'email@email.com';
+  try {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    const local = getLocalProfile() || {};
+    if (user) {
+      const meta = user.user_metadata || {};
+      name = meta.name || meta.full_name || local.name || user.email?.split('@')[0] || 'Usuário';
+      email = user.email || local.email || '';
+      phone = meta.phone || local.phone || '';
+      cpf = meta.cpf || local.cpf || '';
+      saveLocalProfile({ id: user.id, name, email, phone, cpf });
+    } else if (local.email) {
+      name = local.name || 'Usuário';
+      email = local.email;
+      phone = local.phone || '';
+      cpf = local.cpf || '';
+    }
+  } catch (e) {
+    const local = getLocalProfile();
+    if (local) {
+      name = local.name || 'Usuário';
+      email = local.email || '';
+      phone = local.phone || '';
+      cpf = local.cpf || '';
+    }
+  }
+
+  if (nameEl) nameEl.textContent = name;
+  if (emailEl) emailEl.textContent = email || 'email@email.com';
+  if (phoneEl) phoneEl.textContent = phone || '—';
+  if (cpfEl) cpfEl.textContent = cpf || '—';
+
+  // Form edit
+  const editName = document.getElementById('edit-name');
+  const editPhone = document.getElementById('edit-phone');
+  const editCpf = document.getElementById('edit-cpf');
+  if (editName) editName.value = name === 'Usuário' ? '' : name;
+  if (editPhone) editPhone.value = phone || '';
+  if (editCpf) editCpf.value = cpf || '';
+
+  renderAddressList();
+  renderNotifPrefs();
+}
+
+async function saveProfileEdit(event) {
+  event.preventDefault();
+  const name = document.getElementById('edit-name').value.trim();
+  const phone = document.getElementById('edit-phone').value.trim();
+  const cpf = document.getElementById('edit-cpf').value.trim();
+  const msg = document.getElementById('profile-edit-msg');
+
+  if (!name) {
+    if (msg) {
+      msg.style.display = 'block';
+      msg.className = 'form-error';
+      msg.textContent = 'Informe o nome.';
+    }
+    return;
+  }
+
+  saveLocalProfile({ name, phone, cpf });
+
+  try {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (user) {
+      await supabaseClient.auth.updateUser({
+        data: { name, full_name: name, phone, cpf }
+      });
+      try {
+        await supabaseClient.from('profiles').upsert({
+          id: user.id,
+          name,
+          phone,
+          cpf
+        });
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.warn(e);
+  }
+
+  if (msg) {
+    msg.style.display = 'block';
+    msg.className = 'form-success';
+    msg.textContent = 'Dados salvos!';
+  }
+  updateProfileUI();
+  setTimeout(() => {
+    if (msg) msg.style.display = 'none';
+    showScreen('profile');
+  }, 800);
+}
+
+function renderAddressList() {
+  const list = document.getElementById('address-list');
+  if (!list) return;
+  const addresses = getAddresses();
+  if (addresses.length === 0) {
+    list.innerHTML = '<p style="color:var(--gray);font-size:14px;padding:12px 0">Nenhum endereço salvo.</p>';
+    return;
+  }
+  list.innerHTML = addresses.map((a, i) => `
+    <div class="order-card">
+      <div class="order-header">
+        <span class="order-id">${a.label || 'Endereço'}</span>
+        <button class="btn btn-sm btn-outline" onclick="removeAddress(${i})">Excluir</button>
+      </div>
+      <div class="order-items">${a.street}, ${a.number}${a.complement ? ' - ' + a.complement : ''}<br>${a.neighborhood} · ${a.city}/${a.state}<br>CEP ${a.cep || '—'}</div>
+    </div>
+  `).join('');
+}
+
+function addAddress(event) {
+  event.preventDefault();
+  const addr = {
+    label: document.getElementById('addr-label').value.trim() || 'Casa',
+    cep: document.getElementById('addr-cep').value.trim(),
+    street: document.getElementById('addr-street').value.trim(),
+    number: document.getElementById('addr-number').value.trim(),
+    complement: document.getElementById('addr-complement').value.trim(),
+    neighborhood: document.getElementById('addr-neighborhood').value.trim(),
+    city: document.getElementById('addr-city').value.trim() || 'São Paulo',
+    state: document.getElementById('addr-state').value.trim() || 'SP'
+  };
+  if (!addr.street || !addr.number) {
+    alert('Preencha rua e número.');
+    return;
+  }
+  const list = getAddresses();
+  list.push(addr);
+  saveAddresses(list);
+  document.getElementById('address-form').reset();
+  renderAddressList();
+}
+
+function removeAddress(index) {
+  const list = getAddresses();
+  list.splice(index, 1);
+  saveAddresses(list);
+  renderAddressList();
+}
+
+function renderNotifPrefs() {
+  const prefs = JSON.parse(localStorage.getItem('farmgo_notifs') || '{"orders":true,"promo":true}');
+  const o = document.getElementById('notif-orders');
+  const p = document.getElementById('notif-promo');
+  if (o) o.checked = !!prefs.orders;
+  if (p) p.checked = !!prefs.promo;
+}
+
+function saveNotifPrefs() {
+  const prefs = {
+    orders: document.getElementById('notif-orders')?.checked ?? true,
+    promo: document.getElementById('notif-promo')?.checked ?? true
+  };
+  localStorage.setItem('farmgo_notifs', JSON.stringify(prefs));
+  const msg = document.getElementById('notif-msg');
+  if (msg) {
+    msg.style.display = 'block';
+    msg.textContent = 'Preferências salvas!';
+    setTimeout(() => { msg.style.display = 'none'; }, 1500);
   }
 }
 
@@ -378,12 +766,40 @@ async function checkSession() {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (session) {
     updateProfileUI();
+    // Se biometria ativa, não entra no app até desbloquear
+    const cfg = getBiometricConfig();
+    if (cfg && cfg.credentialId && !biometricUnlocked) {
+      showScreen('login');
+      updateBiometricButton();
+      const err = document.getElementById('login-error');
+      if (err) {
+        err.style.display = 'block';
+        err.style.color = '';
+        err.textContent = 'Use a digital ou a senha de 6 dígitos para continuar.';
+      }
+    }
+  }
+  // remove storage inseguro antigo
+  if (localStorage.getItem('farmgo_webauthn')) {
+    localStorage.removeItem('farmgo_webauthn');
   }
 }
 
 // ==================== CART ====================
 let cart = [];
 let qty = 1;
+
+function loadCart() {
+  try {
+    cart = JSON.parse(localStorage.getItem('farmgo_cart') || '[]');
+  } catch {
+    cart = [];
+  }
+}
+
+function persistCart() {
+  localStorage.setItem('farmgo_cart', JSON.stringify(cart));
+}
 
 function addToCart(name, price) {
   const existing = cart.find(item => item.name === name);
@@ -392,6 +808,7 @@ function addToCart(name, price) {
   } else {
     cart.push({ name, price, qty: 1 });
   }
+  persistCart();
   updateCartUI();
   const badges = document.querySelectorAll('.badge');
   badges.forEach(b => {
@@ -528,6 +945,7 @@ function changeCartQty(index, delta) {
   if (cart[index].qty <= 0) {
     cart.splice(index, 1);
   }
+  persistCart();
   updateCartUI();
 }
 
@@ -768,29 +1186,38 @@ function driverStartDelivery(orderId) {
   if (active) active.textContent = '1';
 }
 
-// ==================== PRESCRIPTION ====================
-function handleRxUpload() {
-  const file = document.getElementById('rx-file').files[0];
-  if (!file) return;
-
-  document.getElementById('rx-name').textContent = file.name;
-  document.getElementById('rx-preview').classList.remove('hidden');
-
-  setTimeout(() => {
-    const status = document.querySelector('.rx-status');
-    if (status) {
-      status.innerHTML =
-        '<i class="fas fa-check-circle" style="color:#10B981"></i> <span style="color:#059669">Receita validada! Você já pode pedir os medicamentos.</span>';
-    }
-  }, 2500);
+// ==================== ORDERS STORE ====================
+function getOrders() {
+  try {
+    return JSON.parse(localStorage.getItem('farmgo_orders') || '[]');
+  } catch {
+    return [];
+  }
 }
 
-function removeRx() {
-  document.getElementById('rx-preview').classList.add('hidden');
-  document.getElementById('rx-file').value = '';
+function saveOrders(orders) {
+  localStorage.setItem('farmgo_orders', JSON.stringify(orders));
 }
 
-// ==================== ORDER ====================
+function getPrescriptions() {
+  try {
+    return JSON.parse(localStorage.getItem('farmgo_prescriptions') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function savePrescriptions(list) {
+  localStorage.setItem('farmgo_prescriptions', JSON.stringify(list));
+}
+
+let currentTrackId = null;
+let ordersListMode = 'active';
+
+function fmtMoney(n) {
+  return 'R$ ' + Number(n).toFixed(2).replace('.', ',');
+}
+
 function placeOrder() {
   if (cart.length === 0) {
     alert('Carrinho vazio!');
@@ -810,13 +1237,329 @@ function placeOrder() {
     return;
   }
 
-  // Marca que já fez a primeira compra
+  const profile = getLocalProfile() || {};
+  const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const freight = getFreight();
+  const discount = getDiscount(subtotal);
+  const total = Math.max(0, subtotal + freight - discount);
+  const pay = document.querySelector('input[name="payment"]:checked');
+  const payment = pay ? pay.value : 'pix';
+
+  const address = {
+    cep: document.getElementById('co-cep')?.value || '',
+    street: street.value.trim(),
+    number: number.value.trim(),
+    complement: document.getElementById('co-complement')?.value || '',
+    neighborhood: document.getElementById('co-neighborhood')?.value || '',
+    city: document.getElementById('co-city')?.value || 'São Paulo',
+    state: document.getElementById('co-state')?.value || 'SP'
+  };
+
+  const id = String(Math.floor(10000 + Math.random() * 90000));
+  const now = new Date();
+  const order = {
+    id,
+    items: cart.map(i => ({ ...i })),
+    subtotal,
+    freight,
+    discount,
+    total,
+    payment,
+    coupon: appliedCoupon ? appliedCoupon.code : null,
+    address,
+    customerName: profile.name || 'Cliente',
+    customerPhone: profile.phone || '',
+    customerEmail: profile.email || '',
+    status: 'confirmed', // confirmed | preparing | out | delivered
+    driver: null,
+    createdAt: now.toISOString(),
+    timeline: [
+      { key: 'confirmed', label: 'Pedido confirmado', at: now.toISOString() },
+      { key: 'preparing', label: 'Farmácia separando', at: null },
+      { key: 'out', label: 'Saiu para entrega', at: null },
+      { key: 'delivered', label: 'Entregue', at: null }
+    ]
+  };
+
+  const orders = getOrders();
+  orders.unshift(order);
+  saveOrders(orders);
+
   localStorage.setItem('farmgo_has_ordered', '1');
   appliedCoupon = null;
+  const couponInput = document.getElementById('co-coupon');
+  if (couponInput) couponInput.value = '';
   cart = [];
+  persistCart();
   updateCartUI();
   updateFirstPurchaseUI();
+
+  // Simula progresso da farmácia
+  setTimeout(() => advanceOrderStatus(id, 'preparing'), 4000);
+  setTimeout(() => advanceOrderStatus(id, 'out'), 10000);
+
+  openTracking(id);
+}
+
+function advanceOrderStatus(orderId, status) {
+  const orders = getOrders();
+  const order = orders.find(o => o.id === orderId);
+  if (!order || order.status === 'delivered') return;
+  order.status = status;
+  const now = new Date().toISOString();
+  order.timeline.forEach(t => {
+    if (t.key === status && !t.at) t.at = now;
+    // mark previous as done times
+    const order_keys = ['confirmed', 'preparing', 'out', 'delivered'];
+    const idx = order_keys.indexOf(status);
+    order_keys.slice(0, idx + 1).forEach(k => {
+      const step = order.timeline.find(x => x.key === k);
+      if (step && !step.at) step.at = now;
+    });
+  });
+  if (status === 'out' && !order.driver) {
+    order.driver = { name: 'Carlos Silva', phone: '(11) 98888-0000', rating: 4.9 };
+  }
+  saveOrders(orders);
+  if (currentTrackId === orderId) renderTracking(orderId);
+  refreshPharmacyFromOrders();
+  refreshDriverFromOrders();
+}
+
+function openTracking(orderId) {
+  currentTrackId = orderId;
+  renderTracking(orderId);
   showScreen('tracking');
+}
+
+function renderTracking(orderId) {
+  const order = getOrders().find(o => o.id === orderId);
+  if (!order) return;
+
+  const title = document.getElementById('track-order-id');
+  const st = document.getElementById('track-status-title');
+  const sub = document.getElementById('track-status-sub');
+  const steps = document.getElementById('track-steps');
+  const driverName = document.getElementById('track-driver-name');
+
+  if (title) title.textContent = 'Pedido #' + order.id;
+
+  const labels = {
+    confirmed: 'Pedido confirmado',
+    preparing: 'Farmácia separando',
+    out: 'Saiu para entrega',
+    delivered: 'Entregue'
+  };
+  if (st) st.textContent = labels[order.status] || order.status;
+  if (sub) {
+    if (order.status === 'delivered') sub.textContent = 'Pedido entregue com sucesso';
+    else if (order.status === 'out') sub.textContent = 'Chegada estimada em poucos minutos';
+    else sub.textContent = 'Acompanhe o status abaixo';
+  }
+
+  if (steps) {
+    const order_keys = ['confirmed', 'preparing', 'out', 'delivered'];
+    const cur = order_keys.indexOf(order.status);
+    steps.innerHTML = order.timeline.map((t, i) => {
+      let cls = 't-step';
+      if (i < cur) cls += ' done';
+      if (i === cur) cls += ' active done';
+      const time = t.at ? new Date(t.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+      return `<div class="${cls}"><div class="t-dot"></div><div><strong>${t.label}</strong><span>${time}</span></div></div>`;
+    }).join('');
+  }
+
+  if (driverName) {
+    driverName.textContent = order.driver ? order.driver.name : 'Aguardando motorista';
+  }
+
+  const addrLabel = document.getElementById('cart-address-label');
+  if (addrLabel && order.address) {
+    addrLabel.textContent = order.address.street + ', ' + order.address.number;
+  }
+}
+
+function renderOrdersList(mode, btn) {
+  if (mode) ordersListMode = mode;
+  if (btn) {
+    document.querySelectorAll('#orders .tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  const list = document.getElementById('orders-list');
+  if (!list) return;
+
+  const orders = getOrders();
+  const filtered = orders.filter(o => {
+    if (ordersListMode === 'done') return o.status === 'delivered';
+    return o.status !== 'delivered';
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:40px 20px"><i class="fas fa-box-open"></i><h3>Nenhum pedido</h3><p>Seus pedidos aparecerão aqui</p><button class="btn btn-primary" onclick="showScreen(\'search\')">Pedir agora</button></div>';
+    return;
+  }
+
+  const statusLabel = {
+    confirmed: 'Confirmado',
+    preparing: 'Preparando',
+    out: 'A caminho',
+    delivered: 'Entregue'
+  };
+
+  list.innerHTML = filtered.map(o => {
+    const items = o.items.map(i => i.name + (i.qty > 1 ? ' ×' + i.qty : '')).join(' · ');
+    const when = new Date(o.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const stClass = o.status === 'delivered' ? 'done' : 'active';
+    return `<div class="order-card" onclick="openTracking('${o.id}')">
+      <div class="order-header">
+        <span class="order-id">#${o.id}</span>
+        <span class="order-status ${stClass}">${statusLabel[o.status] || o.status}</span>
+      </div>
+      <div class="order-items">${items}</div>
+      <div class="order-footer">
+        <span>${when}</span>
+        <strong>${fmtMoney(o.total)}</strong>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function removeRx() {
+  const preview = document.getElementById('rx-preview');
+  if (preview) preview.classList.add('hidden');
+  const file = document.getElementById('rx-file');
+  if (file) file.value = '';
+  const status = document.querySelector('.rx-status');
+  if (status) {
+    status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Validando com farmacêutico...</span>';
+  }
+}
+
+function handleRxUpload() {
+  const file = document.getElementById('rx-file').files[0];
+  if (!file) return;
+
+  document.getElementById('rx-name').textContent = file.name;
+  document.getElementById('rx-preview').classList.remove('hidden');
+
+  const list = getPrescriptions();
+  list.unshift({
+    id: Date.now().toString(),
+    name: file.name,
+    status: 'validating',
+    createdAt: new Date().toISOString()
+  });
+  savePrescriptions(list);
+
+  setTimeout(() => {
+    const status = document.querySelector('.rx-status');
+    if (status) {
+      status.innerHTML =
+        '<i class="fas fa-check-circle" style="color:#10B981"></i> <span style="color:#059669">Receita validada! Você já pode pedir os medicamentos.</span>';
+    }
+    const prescriptions = getPrescriptions();
+    if (prescriptions[0]) {
+      prescriptions[0].status = 'validated';
+      savePrescriptions(prescriptions);
+    }
+    renderRxHistory();
+  }, 2000);
+}
+
+function renderRxHistory() {
+  const el = document.getElementById('rx-history');
+  if (!el) return;
+  const list = getPrescriptions();
+  if (list.length === 0) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--gray)">Nenhuma receita enviada ainda.</p>';
+    return;
+  }
+  el.innerHTML = list.slice(0, 10).map(r => {
+    const st = r.status === 'validated' ? 'Validada' : 'Em análise';
+    const cls = r.status === 'validated' ? 'done' : 'active';
+    const when = new Date(r.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<div class="order-card"><div class="order-header"><span class="order-id">${r.name}</span><span class="order-status ${cls}">${st}</span></div><div class="order-footer"><span>${when}</span></div></div>`;
+  }).join('');
+}
+
+function refreshPharmacyFromOrders() {
+  const orders = getOrders().filter(o => o.status !== 'delivered');
+  const container = document.getElementById('pharm-tab-pedidos');
+  if (!container) return;
+
+  const pending = orders.length;
+  const revToday = getOrders()
+    .filter(o => {
+      const d = new Date(o.createdAt);
+      const n = new Date();
+      return d.toDateString() === n.toDateString();
+    })
+    .reduce((s, o) => s + o.total, 0);
+
+  const elOrders = document.getElementById('pharm-orders-today');
+  const elRev = document.getElementById('pharm-revenue');
+  const elPend = document.getElementById('pharm-pending');
+  if (elOrders) elOrders.textContent = String(getOrders().filter(o => new Date(o.createdAt).toDateString() === new Date().toDateString()).length || 0);
+  if (elRev) elRev.textContent = fmtMoney(revToday || 0);
+  if (elPend) elPend.textContent = String(pending);
+
+  if (orders.length === 0) {
+    // keep static demo if empty - or show empty
+    return;
+  }
+
+  const statusLabel = { confirmed: 'Novo', preparing: 'Separar', out: 'Em rota', delivered: 'Entregue' };
+  let html = '<h3 class="section-title-sm">Pedidos em andamento</h3>';
+  html += orders.slice(0, 8).map(o => {
+    const items = o.items.map(i => i.name + ' ×' + i.qty).join(' · ');
+    return `<div class="order-card">
+      <div class="order-header">
+        <span class="order-id">#${o.id}</span>
+        <span class="order-status active">${statusLabel[o.status] || o.status}</span>
+      </div>
+      <div class="order-items">${items}</div>
+      <div class="order-footer">
+        <span>${o.customerName || 'Cliente'}</span>
+        ${o.status === 'confirmed' || o.status === 'preparing'
+          ? `<button class="btn btn-sm btn-primary" onclick="pharmacyConfirmOrder('${o.id}')">Confirmar</button>`
+          : `<button class="btn btn-sm btn-outline" onclick="openTracking('${o.id}')">Ver</button>`}
+      </div>
+    </div>`;
+  }).join('');
+  container.innerHTML = html;
+}
+
+function pharmacyConfirmOrder(id) {
+  advanceOrderStatus(id, 'preparing');
+  setTimeout(() => advanceOrderStatus(id, 'out'), 3000);
+  refreshPharmacyFromOrders();
+}
+
+function refreshDriverFromOrders() {
+  const out = getOrders().filter(o => o.status === 'out');
+  const waiting = getOrders().filter(o => o.status === 'preparing' || o.status === 'confirmed');
+  const activeEl = document.getElementById('driver-active-delivery');
+  if (activeEl && out[0]) {
+    const o = out[0];
+    const items = o.items.map(i => i.name).join(' · ');
+    const addr = o.address ? `${o.address.street}, ${o.address.number}` : 'Endereço';
+    activeEl.innerHTML = `
+      <div class="order-header">
+        <span class="order-id">#${o.id}</span>
+        <span class="order-status active">Em rota</span>
+      </div>
+      <div class="order-items">${items}</div>
+      <div style="font-size:13px;color:var(--gray);margin:8px 0">
+        <div><i class="fas fa-map-marker-alt" style="color:var(--primary);width:18px"></i> ${addr}</div>
+        <div style="margin-top:4px"><i class="fas fa-user" style="width:18px"></i> ${o.customerName || 'Cliente'}</div>
+      </div>
+      <div class="order-footer" style="gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-outline" onclick="alert('Ligando...')"><i class="fas fa-phone"></i> Ligar</button>
+        <button class="btn btn-sm btn-primary" onclick="driverMarkDelivered('${o.id}')">Marcar entregue</button>
+      </div>`;
+  }
+  const activeStat = document.getElementById('driver-stat-active');
+  if (activeStat) activeStat.textContent = String(out.length);
 }
 
 function formatCep(input) {
@@ -846,7 +1589,6 @@ function applyCoupon() {
   }
 
   if (coupons[code]) {
-    // PRIMEIRA só vale na primeira compra
     if (code === 'PRIMEIRA' && !isFirstPurchase()) {
       msg.style.display = 'block';
       msg.style.color = 'var(--danger)';
@@ -874,14 +1616,12 @@ function filterCategory(cat, btn) {
   document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
-  // Filtra lista da home
   document.querySelectorAll('#home .med-card[data-cat]').forEach(card => {
     const cats = (card.getAttribute('data-cat') || '').split(/\s+/);
     const show = cat === 'todos' || cats.includes(cat);
     card.style.display = show ? 'flex' : 'none';
   });
 
-  // Também vai para busca com filtro aplicado
   if (cat !== 'todos') {
     showScreen('search');
     document.querySelectorAll('#search-results .med-card').forEach(card => {
@@ -889,6 +1629,25 @@ function filterCategory(cat, btn) {
       card.style.display = cats.includes(cat) ? 'flex' : 'none';
     });
   }
+}
+
+function applySearchFilter(type, btn) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const cards = document.querySelectorAll('#search-results .med-card');
+  cards.forEach(card => {
+    const cats = (card.getAttribute('data-cat') || '');
+    const text = card.innerText.toLowerCase();
+    let show = true;
+    if (type === 'receita') show = text.includes('receita');
+    else if (type === 'genericos') show = cats.includes('genericos');
+    else if (type === 'baratos') {
+      const priceEl = card.querySelector('.price');
+      const p = priceEl ? parseFloat(priceEl.textContent.replace(/[^\d,]/g, '').replace(',', '.')) : 999;
+      show = p <= 20;
+    }
+    card.style.display = show ? 'flex' : 'none';
+  });
 }
 
 // ==================== SEARCH FILTER ====================
@@ -903,12 +1662,37 @@ function filterMeds() {
   });
 }
 
+// Override driver mark delivered to use orders store
+function driverMarkDelivered(orderId) {
+  advanceOrderStatus(orderId, 'delivered');
+  const card = document.getElementById('driver-active-delivery');
+  if (card) {
+    card.innerHTML =
+      '<div class="order-header"><span class="order-id">#' +
+      orderId +
+      '</span><span class="order-status done">Entregue</span></div>' +
+      '<div class="order-items">Entrega concluída com sucesso!</div>';
+  }
+  const done = document.getElementById('driver-stat-done');
+  if (done) done.textContent = String(Number(done.textContent || 0) + 1);
+  refreshDriverFromOrders();
+}
+
+function driverStartDelivery(orderId) {
+  advanceOrderStatus(orderId, 'out');
+  alert('Entrega #' + orderId + ' iniciada!');
+  refreshDriverFromOrders();
+}
+
 // ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', () => {
+  loadCart();
+  updateCartUI();
   updateCartBadges();
   checkSession();
   updateFirstPurchaseUI();
   updateBiometricButton();
+  updateProfileUI();
 
   document.querySelectorAll('.payment-option').forEach(opt => {
     opt.addEventListener('click', () => {
