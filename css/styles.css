@@ -1512,24 +1512,28 @@ body {
 }
 
 .tracking-map {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
-.map-placeholder {
-  height: 180px;
-  background: linear-gradient(135deg, #E0F2FE 0%, #D1FAE5 100%);
+.track-map {
+  height: 220px;
+  width: 100%;
   border-radius: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray);
-  gap: 8px;
+  overflow: hidden;
+  border: 1px solid var(--gray-border);
+  background: #e8f0e9;
+  z-index: 0;
 }
 
-.map-placeholder i {
-  font-size: 36px;
-  color: var(--primary);
+.map-hint {
+  font-size: 12px;
+  color: var(--gray);
+  margin-top: 8px;
+  text-align: center;
+}
+
+.leaflet-container {
+  font-family: inherit;
 }
 
 .tracking-steps {
