@@ -11,7 +11,13 @@ function showScreen(id) {
   if (id === 'orders') renderOrdersList('active');
   if (id === 'tracking' && trackMap) setTimeout(() => trackMap.invalidateSize(), 200);
   if (id === 'prescription') renderRxHistory();
-  if (id === 'pharmacy-dashboard') refreshPharmacyFromOrders();
+  if (id === 'pharmacy-dashboard') {
+    ensurePharmacyCatalog();
+    refreshPharmacyFromOrders();
+    renderPharmacyMedicines();
+    renderPharmacyStock();
+    renderPharmacySales();
+  }
   if (id === 'driver-dashboard') refreshDriverFromOrders();
   if (id === 'checkout') { prepareCheckout(); updateTotals(); }
   if (id === 'cart') updateTotals();
@@ -539,12 +545,16 @@ function handlePharmacyLogout() {
 }
 
 function showPharmTab(tab, btn) {
-  ['pedidos', 'motoristas', 'vendas', 'estoque'].forEach(t => {
+  ['pedidos', 'remedios', 'estoque', 'vendas', 'motoristas'].forEach(t => {
     const el = document.getElementById('pharm-tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
   });
   document.querySelectorAll('#pharmacy-dashboard .tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  if (tab === 'remedios') renderPharmacyMedicines();
+  if (tab === 'estoque') renderPharmacyStock();
+  if (tab === 'vendas') renderPharmacySales();
+  if (tab === 'pedidos') refreshPharmacyFromOrders();
 }
 
 async function handleLogout() {
@@ -804,6 +814,12 @@ function persistCart() {
 }
 
 function addToCart(name, price) {
+  // opcional: avisar se estoque baixo
+  const prod = Object.values(PRODUCTS).find(p => p.shortName === name || p.name === name);
+  if (prod && typeof prod.stock === 'number' && prod.stock <= 0) {
+    alert('Produto sem estoque no momento.');
+    return;
+  }
   const existing = cart.find(item => item.name === name);
   if (existing) {
     existing.qty += 1;
@@ -1104,8 +1120,376 @@ const PRODUCTS = {
 
 let currentProduct = PRODUCTS.dipirona;
 
+// ==================== PHARMACY CATALOG / ESTOQUE ====================
+const PHARM_PRODUCTS_KEY = 'farmgo_pharmacy_products';
+
+function getPharmacyProducts() {
+  try {
+    return JSON.parse(localStorage.getItem(PHARM_PRODUCTS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function savePharmacyProducts(list) {
+  localStorage.setItem(PHARM_PRODUCTS_KEY, JSON.stringify(list));
+  syncProductsToCatalog(list);
+  renderCustomerCatalog();
+}
+
+function ensurePharmacyCatalog() {
+  let list = getPharmacyProducts();
+  if (list.length === 0 && typeof PRODUCTS !== 'undefined') {
+    list = Object.values(PRODUCTS).map(p => ({
+      id: p.id,
+      name: p.name,
+      shortName: p.shortName || p.name,
+      lab: p.lab || '',
+      price: p.price,
+      price2: p.price2 || p.price,
+      stock: 80,
+      stockMin: 15,
+      category: 'medicamentos',
+      needsRx: !!p.needsRx,
+      desc: p.desc || '',
+      comp: p.comp || '',
+      usage: p.usage || '',
+      contra: p.contra || '',
+      icon: p.icon || 'fa-pills',
+      active: true,
+      time: p.time || '20 min'
+    }));
+    // categories refinadas
+    const catMap = {
+      losartana: 'coracao',
+      paracetamol_infantil: 'infantil',
+      clonazepam: 'nervoso',
+      protetor: 'beleza',
+      dipirona: 'genericos',
+      omeprazol: 'genericos',
+      amoxicilina: 'genericos'
+    };
+    list.forEach(item => {
+      if (catMap[item.id]) item.category = catMap[item.id];
+    });
+    savePharmacyProducts(list);
+  } else {
+    syncProductsToCatalog(list);
+  }
+}
+
+function syncProductsToCatalog(list) {
+  list.forEach(p => {
+    PRODUCTS[p.id] = {
+      id: p.id,
+      name: p.name,
+      shortName: p.shortName || p.name,
+      lab: p.lab,
+      price: Number(p.price),
+      price2: Number(p.price2 || p.price),
+      icon: p.icon || 'fa-pills',
+      iconClass: '',
+      needsRx: !!p.needsRx,
+      time: p.time || '20 min',
+      desc: p.desc || '',
+      comp: p.comp || '',
+      usage: p.usage || '',
+      contra: p.contra || '',
+      stock: p.stock,
+      category: p.category,
+      active: p.active !== false
+    };
+  });
+}
+
+function slugifyMed(name) {
+  return (
+    name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 40) || 'med_' + Date.now()
+  );
+}
+
+function openMedicineForm(id) {
+  const wrap = document.getElementById('pharm-med-form-wrap');
+  if (!wrap) return;
+  wrap.style.display = 'block';
+  document.getElementById('pharm-med-form-title').textContent = id ? 'Editar remédio' : 'Novo remédio';
+  document.getElementById('med-edit-id').value = id || '';
+
+  if (id) {
+    const p = getPharmacyProducts().find(x => x.id === id);
+    if (p) {
+      document.getElementById('med-name').value = p.name || '';
+      document.getElementById('med-lab').value = p.lab || '';
+      document.getElementById('med-price').value = p.price;
+      document.getElementById('med-price2').value = p.price2 || '';
+      document.getElementById('med-stock').value = p.stock ?? 0;
+      document.getElementById('med-stock-min').value = p.stockMin ?? 10;
+      document.getElementById('med-category').value = p.category || 'medicamentos';
+      document.getElementById('med-needs-rx').checked = !!p.needsRx;
+      document.getElementById('med-desc').value = p.desc || '';
+      document.getElementById('med-comp').value = p.comp || '';
+      document.getElementById('med-usage').value = p.usage || '';
+      document.getElementById('med-contra').value = p.contra || '';
+      document.getElementById('med-active').checked = p.active !== false;
+    }
+  } else {
+    document.getElementById('pharm-med-form').reset();
+    document.getElementById('med-edit-id').value = '';
+    document.getElementById('med-stock').value = 50;
+    document.getElementById('med-stock-min').value = 10;
+    document.getElementById('med-active').checked = true;
+  }
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeMedicineForm() {
+  const wrap = document.getElementById('pharm-med-form-wrap');
+  if (wrap) wrap.style.display = 'none';
+}
+
+function savePharmacyMedicine(event) {
+  event.preventDefault();
+  const editId = document.getElementById('med-edit-id').value;
+  const name = document.getElementById('med-name').value.trim();
+  const price = parseFloat(document.getElementById('med-price').value);
+  if (!name || isNaN(price)) {
+    alert('Nome e preço são obrigatórios.');
+    return;
+  }
+
+  const list = getPharmacyProducts();
+  const payload = {
+    id: editId || slugifyMed(name) + '_' + Date.now().toString(36),
+    name,
+    shortName: name.split(' ').slice(0, 3).join(' '),
+    lab: document.getElementById('med-lab').value.trim(),
+    price,
+    price2: parseFloat(document.getElementById('med-price2').value) || price,
+    stock: parseInt(document.getElementById('med-stock').value, 10) || 0,
+    stockMin: parseInt(document.getElementById('med-stock-min').value, 10) || 0,
+    category: document.getElementById('med-category').value,
+    needsRx: document.getElementById('med-needs-rx').checked,
+    desc: document.getElementById('med-desc').value.trim(),
+    comp: document.getElementById('med-comp').value.trim(),
+    usage: document.getElementById('med-usage').value.trim(),
+    contra: document.getElementById('med-contra').value.trim(),
+    icon: 'fa-pills',
+    active: document.getElementById('med-active').checked,
+    time: '20 min'
+  };
+
+  const idx = list.findIndex(x => x.id === payload.id);
+  if (idx >= 0) list[idx] = { ...list[idx], ...payload };
+  else list.unshift(payload);
+
+  savePharmacyProducts(list);
+  closeMedicineForm();
+  renderPharmacyMedicines();
+  renderPharmacyStock();
+  alert('Remédio salvo e ' + (payload.active ? 'publicado no app!' : 'salvo como rascunho.'));
+}
+
+function deletePharmacyMedicine(id) {
+  if (!confirm('Remover este remédio do catálogo?')) return;
+  const list = getPharmacyProducts().filter(x => x.id !== id);
+  savePharmacyProducts(list);
+  if (PRODUCTS[id]) delete PRODUCTS[id];
+  renderPharmacyMedicines();
+  renderPharmacyStock();
+  renderCustomerCatalog();
+}
+
+function renderPharmacyMedicines() {
+  const el = document.getElementById('pharm-med-list');
+  if (!el) return;
+  ensurePharmacyCatalog();
+  const q = (document.getElementById('pharm-med-search')?.value || '').toLowerCase();
+  let list = getPharmacyProducts();
+  if (q) list = list.filter(p => (p.name + p.lab).toLowerCase().includes(q));
+
+  if (list.length === 0) {
+    el.innerHTML = '<p style="color:var(--gray);font-size:14px">Nenhum remédio. Clique em Novo para cadastrar.</p>';
+    return;
+  }
+
+  el.innerHTML = list
+    .map(p => {
+      const pub = p.active !== false;
+      return `<div class="order-card">
+        <div class="order-header">
+          <span class="order-id">${p.name}</span>
+          <span class="order-status ${pub ? 'done' : ''}">${pub ? 'No app' : 'Oculto'}</span>
+        </div>
+        <div class="order-items">${p.lab || '—'} · R$ ${Number(p.price).toFixed(2).replace('.', ',')} · Est: ${p.stock}</div>
+        <div class="order-footer" style="gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline" onclick="openMedicineForm('${p.id}')">Editar</button>
+          <button class="btn btn-sm btn-outline" onclick="toggleMedicineActive('${p.id}')">${pub ? 'Ocultar' : 'Publicar'}</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--danger)" onclick="deletePharmacyMedicine('${p.id}')">Excluir</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+}
+
+function toggleMedicineActive(id) {
+  const list = getPharmacyProducts();
+  const p = list.find(x => x.id === id);
+  if (!p) return;
+  p.active = p.active === false;
+  savePharmacyProducts(list);
+  renderPharmacyMedicines();
+}
+
+function adjustStock(id, delta) {
+  const list = getPharmacyProducts();
+  const p = list.find(x => x.id === id);
+  if (!p) return;
+  p.stock = Math.max(0, (parseInt(p.stock, 10) || 0) + delta);
+  savePharmacyProducts(list);
+  renderPharmacyStock();
+  renderPharmacyMedicines();
+}
+
+function setStock(id, value) {
+  const list = getPharmacyProducts();
+  const p = list.find(x => x.id === id);
+  if (!p) return;
+  p.stock = Math.max(0, parseInt(value, 10) || 0);
+  savePharmacyProducts(list);
+  renderPharmacyStock();
+}
+
+function renderPharmacyStock() {
+  const el = document.getElementById('pharm-stock-list');
+  if (!el) return;
+  ensurePharmacyCatalog();
+  const list = getPharmacyProducts();
+  if (!list.length) {
+    el.innerHTML = '<p style="color:var(--gray)">Cadastre remédios na aba Remédios.</p>';
+    return;
+  }
+  el.innerHTML = list
+    .map(p => {
+      const stock = parseInt(p.stock, 10) || 0;
+      const min = parseInt(p.stockMin, 10) || 0;
+      let status = 'OK';
+      let style = 'done';
+      if (stock <= 0) {
+        status = 'Zerado';
+        style = '';
+      } else if (stock <= min * 0.5) {
+        status = 'Crítico';
+        style = '';
+      } else if (stock <= min) {
+        status = 'Baixo';
+        style = '';
+      }
+      const badgeStyle =
+        status === 'OK'
+          ? ''
+          : status === 'Baixo'
+            ? 'style="background:#FEF3C7;color:#D97706"'
+            : 'style="background:#FEE2E2;color:#DC2626"';
+      return `<div class="order-card">
+        <div class="order-header">
+          <span class="order-id">${p.name}</span>
+          <span class="order-status ${style}" ${badgeStyle}>${status}</span>
+        </div>
+        <div class="order-footer" style="flex-wrap:wrap;gap:8px">
+          <span>Mín: ${min}</span>
+          <div class="qty-selector">
+            <button type="button" onclick="adjustStock('${p.id}', -1)">−</button>
+            <input type="number" value="${stock}" min="0" style="width:52px;text-align:center;border:none;font-weight:600" onchange="setStock('${p.id}', this.value)">
+            <button type="button" onclick="adjustStock('${p.id}', 1)">+</button>
+          </div>
+        </div>
+      </div>`;
+    })
+    .join('');
+}
+
+function requestRestock() {
+  const low = getPharmacyProducts().filter(p => (p.stock || 0) <= (p.stockMin || 0));
+  if (!low.length) {
+    alert('Nenhum item abaixo do mínimo.');
+    return;
+  }
+  alert('Reposição solicitada para:\\n' + low.map(p => '• ' + p.name + ' (est. ' + p.stock + ')').join('\\n'));
+}
+
+function renderPharmacySales() {
+  const orders = getOrders();
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWeek = new Date(startOfDay);
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const sum = (from) =>
+    orders.filter(o => new Date(o.createdAt) >= from).reduce((s, o) => s + (o.total || 0), 0);
+
+  const today = sum(startOfDay);
+  const week = sum(startOfWeek);
+  const month = sum(startOfMonth);
+  const fee = month * 0.12;
+  const net = month - fee;
+  const fmt = n => 'R$ ' + n.toFixed(2).replace('.', ',');
+
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = v;
+  };
+  set('pharm-sales-today', fmt(today));
+  set('pharm-sales-week', fmt(week));
+  set('pharm-sales-month', fmt(month));
+  set('pharm-sales-fee', '- ' + fmt(fee));
+  set('pharm-sales-net', fmt(net));
+  const cat = document.getElementById('pharm-catalog-count');
+  if (cat) {
+    const n = getPharmacyProducts().filter(p => p.active !== false).length;
+    cat.textContent = n + ' produto' + (n === 1 ? '' : 's') + ' publicado' + (n === 1 ? '' : 's');
+  }
+}
+
+function medCardHtml(p) {
+  const price = Number(p.price).toFixed(2).replace('.', ',');
+  const cats = [p.category || 'medicamentos', p.needsRx ? '' : 'genericos'].filter(Boolean).join(' ');
+  const rx = p.needsRx ? ' · <span class="badge-rx">Receita</span>' : '';
+  return `<div class="med-card" data-cat="${cats}" onclick="openProduct('${p.id}')">
+    <div class="med-icon"><i class="fas ${p.icon || 'fa-pills'}"></i></div>
+    <div class="med-info">
+      <strong>${p.name}</strong>
+      <span class="med-lab">${p.lab || ''}${rx}</span>
+      <div class="med-meta">
+        <span class="price">R$ ${price}</span>
+      </div>
+    </div>
+    <button class="add-btn" onclick="event.stopPropagation(); addToCart('${(p.shortName || p.name).replace(/'/g, "\\'")}', ${Number(p.price)})"><i class="fas fa-plus"></i></button>
+  </div>`;
+}
+
+function renderCustomerCatalog() {
+  ensurePharmacyCatalog();
+  const list = getPharmacyProducts().filter(p => p.active !== false);
+  const home = document.getElementById('home-med-list');
+  const search = document.getElementById('search-results');
+  const html = list.map(medCardHtml).join('');
+  if (home) home.innerHTML = html || '<p style="padding:16px;color:var(--gray)">Nenhum produto publicado pela farmácia.</p>';
+  if (search) search.innerHTML = html || '<p style="padding:16px;color:var(--gray)">Nenhum produto encontrado.</p>';
+}
+
+
+
 function openProduct(id) {
-  const p = PRODUCTS[id] || PRODUCTS.dipirona;
+  ensurePharmacyCatalog();
+  const p = PRODUCTS[id] || Object.values(PRODUCTS)[0];
+  if (!p) return;
   currentProduct = p;
   qty = 1;
 
@@ -1432,6 +1816,16 @@ function placeOrder() {
       { key: 'delivered', label: 'Entregue', at: null }
     ]
   };
+
+  // baixa estoque
+  const plist = getPharmacyProducts();
+  order.items.forEach(item => {
+    const prod = plist.find(p => p.shortName === item.name || p.name === item.name);
+    if (prod) {
+      prod.stock = Math.max(0, (parseInt(prod.stock, 10) || 0) - item.qty);
+    }
+  });
+  savePharmacyProducts(plist);
 
   const orders = getOrders();
   orders.unshift(order);
@@ -1845,7 +2239,7 @@ function renderRxHistory() {
 
 function refreshPharmacyFromOrders() {
   const orders = getOrders().filter(o => o.status !== 'delivered');
-  const container = document.getElementById('pharm-tab-pedidos');
+  const container = document.getElementById('pharm-orders-live') || document.getElementById('pharm-tab-pedidos');
   if (!container) return;
 
   const pending = orders.length;
@@ -1865,12 +2259,14 @@ function refreshPharmacyFromOrders() {
   if (elPend) elPend.textContent = String(pending);
 
   if (orders.length === 0) {
-    // keep static demo if empty - or show empty
+    if (container.id === 'pharm-orders-live') {
+      container.innerHTML = '<p style="color:var(--gray);font-size:14px">Nenhum pedido em andamento.</p>';
+    }
     return;
   }
 
   const statusLabel = { confirmed: 'Novo', preparing: 'Separar', out: 'Em rota', delivered: 'Entregue' };
-  let html = '<h3 class="section-title-sm">Pedidos em andamento</h3>';
+  let html = '';
   html += orders.slice(0, 8).map(o => {
     const items = o.items.map(i => i.name + ' ×' + i.qty).join(' · ');
     return `<div class="order-card">
@@ -2054,6 +2450,12 @@ document.addEventListener('DOMContentLoaded', () => {
   updateFirstPurchaseUI();
   updateBiometricButton();
   updateProfileUI();
+  try {
+    ensurePharmacyCatalog();
+    renderCustomerCatalog();
+  } catch (e) {
+    console.warn(e);
+  }
 
   document.querySelectorAll('.payment-option').forEach(opt => {
     opt.addEventListener('click', () => {
