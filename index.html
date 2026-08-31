@@ -880,6 +880,7 @@
       <div class="tracking-map">
         <div id="track-map" class="track-map"></div>
         <p id="track-map-hint" class="map-hint">Atualizando localização…</p>
+        <p id="track-route-steps" class="map-hint" style="text-align:left;margin-top:4px"></p>
       </div>
       <div class="tracking-steps" id="track-steps">
         <div class="t-step done">
@@ -1406,6 +1407,7 @@
       </div>
 
       <h3 class="section-title-sm">Entrega em andamento</h3>
+      <div id="driver-route-opt" style="display:none;margin-bottom:12px"></div>
       <div class="order-card" id="driver-active-delivery" style="border-color:var(--primary);border-width:1.5px">
         <div class="order-header">
           <span class="order-id">#48291</span>
@@ -1456,6 +1458,7 @@
     </main>
   </div>
 
+  <script src="js/maps-config.js"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/app.js"></script>
 </body>
