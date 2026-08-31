@@ -1748,33 +1748,80 @@ function addCurrentProduct() {
 }
 
 // ==================== DRIVER ====================
-// Login demo: qualquer e-mail + senha com 4+ caracteres
-// Em produção: Auth Supabase com role "driver"
+// Contas específicas de motorista (demo). Em produção: Supabase role "driver".
+
+const DRIVER_ACCOUNTS = [
+  {
+    login: ['motorista@farmgo.com', 'mot001', 'carlos@farmgo.com'],
+    password: '1234',
+    name: 'Carlos Silva',
+    vehicle: 'Moto',
+    rating: 4.9
+  },
+  {
+    login: ['fernanda@farmgo.com', 'mot002'],
+    password: '1234',
+    name: 'Fernanda Lima',
+    vehicle: 'Bike',
+    rating: 4.8
+  },
+  {
+    login: ['pedro@farmgo.com', 'mot003'],
+    password: '1234',
+    name: 'Pedro Santos',
+    vehicle: 'Moto',
+    rating: 4.7
+  }
+];
+
+let currentDriver = null;
 
 function handleDriverLogin(event) {
   event.preventDefault();
-  const email = document.getElementById('driver-email').value.trim();
+  const raw = document.getElementById('driver-email').value.trim().toLowerCase();
   const password = document.getElementById('driver-password').value;
   const errorEl = document.getElementById('driver-login-error');
 
   errorEl.style.display = 'none';
 
-  if (!email || password.length < 4) {
-    errorEl.textContent = 'E-mail e senha inválidos.';
+  if (!raw || !password) {
+    errorEl.textContent = 'Informe e-mail/código e senha.';
     errorEl.style.display = 'block';
     return;
   }
 
-  // Demo: aceita qualquer login com senha >= 4 caracteres
-  const name = email.split('@')[0];
-  document.getElementById('driver-name').textContent =
-    name.charAt(0).toUpperCase() + name.slice(1);
+  const account = DRIVER_ACCOUNTS.find(
+    a => a.login.includes(raw) && a.password === password
+  );
+
+  if (!account) {
+    errorEl.textContent =
+      'Login ou senha incorretos. Use motorista@farmgo.com / 1234';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  currentDriver = account;
+  try {
+    sessionStorage.setItem(
+      'farmgo_driver',
+      JSON.stringify({ name: account.name, login: raw })
+    );
+  } catch (_) {}
+
+  const nameEl = document.getElementById('driver-name');
+  if (nameEl) nameEl.textContent = account.name;
+
   document.getElementById('driver-login-form').reset();
   showScreen('driver-dashboard');
   refreshDriverFromOrders();
 }
 
 function handleDriverLogout() {
+  currentDriver = null;
+  try {
+    sessionStorage.removeItem('farmgo_driver');
+  } catch (_) {}
   showScreen('landing');
 }
 
@@ -2848,9 +2895,12 @@ function driverStartDelivery(orderId) {
   const o = orders.find(x => x.id === orderId);
   if (o) {
     o.driver = o.driver || {
-      name: document.getElementById('driver-name')?.textContent || 'Motorista',
+      name: (currentDriver && currentDriver.name) ||
+        document.getElementById('driver-name')?.textContent ||
+        'Motorista',
       phone: '',
-      rating: 4.9
+      rating: (currentDriver && currentDriver.rating) || 4.9,
+      vehicle: (currentDriver && currentDriver.vehicle) || 'Moto'
     };
     saveOrders(orders);
   }
