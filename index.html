@@ -24,6 +24,7 @@
           <a href="#como-funciona">Como funciona</a>
           <a href="#beneficios">Benefícios</a>
           <a href="#farmacias">Para Farmácias</a>
+          <a href="#motoristas">Para Motoristas</a>
           <button class="btn btn-outline" onclick="showScreen('login')">Entrar</button>
           <button class="btn btn-primary" onclick="showScreen('register')">Começar agora</button>
         </nav>
@@ -35,6 +36,7 @@
         <a href="#como-funciona" onclick="toggleMobileMenu()">Como funciona</a>
         <a href="#beneficios" onclick="toggleMobileMenu()">Benefícios</a>
         <a href="#farmacias" onclick="toggleMobileMenu()">Para Farmácias</a>
+        <a href="#motoristas" onclick="toggleMobileMenu()">Para Motoristas</a>
         <button class="btn btn-outline" onclick="toggleMobileMenu(); showScreen('login')">Entrar</button>
         <button class="btn btn-primary" onclick="toggleMobileMenu(); showScreen('register')">Começar agora</button>
       </div>
@@ -186,6 +188,21 @@
       </div>
     </section>
 
+    <section id="motoristas" class="section section-alt">
+      <div class="container">
+        <div class="farmacia-cta">
+          <div>
+            <h2>É motorista parceiro?</h2>
+            <p>Acesse o painel de entregas: saia para entrega, confirme no cliente e veja a próxima rota automaticamente.</p>
+            <button class="btn btn-primary" onclick="showScreen('driver-login')">Sou motorista →</button>
+          </div>
+          <div class="farmacia-visual">
+            <i class="fas fa-motorcycle"></i>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <footer class="landing-footer">
       <div class="container">
         <div class="footer-grid">
@@ -216,7 +233,7 @@
         <div class="footer-bottom">
           © 2026 FarmGo. Todos os direitos reservados.
           <span style="margin:0 8px;opacity:0.4">·</span>
-          <a href="#" onclick="showScreen('driver-login')" style="color:rgba(255,255,255,0.45);font-size:12px;text-decoration:none">Área do motorista</a>
+          <a href="#motoristas" style="color:rgba(255,255,255,0.45);font-size:12px;text-decoration:none">Área do motorista</a>
         </div>
       </div>
     </footer>
@@ -1363,20 +1380,24 @@
       <div class="auth-card">
         <div class="logo logo-lg"><i class="fas fa-motorcycle"></i> FarmGo Entregas</div>
         <h2>Área do Motorista</h2>
-        <p class="auth-subtitle">Gerencie suas entregas</p>
+        <p class="auth-subtitle">Painel do entregador parceiro</p>
         <form id="driver-login-form" onsubmit="handleDriverLogin(event)">
           <div class="form-group">
             <label>E-mail ou código do motorista</label>
-            <input type="text" id="driver-email" placeholder="motorista@farmgo.com" required>
+            <input type="text" id="driver-email" placeholder="motorista@farmgo.com ou MOT001" required autocomplete="username">
           </div>
           <div class="form-group">
             <label>Senha</label>
-            <input type="password" id="driver-password" placeholder="••••••••" required>
+            <input type="password" id="driver-password" placeholder="••••••••" required autocomplete="current-password">
           </div>
           <p id="driver-login-error" class="form-error" style="display:none;"></p>
-          <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+          <button type="submit" class="btn btn-primary btn-block">Acessar painel</button>
         </form>
-        <p class="auth-footer" style="font-size:12px;color:var(--gray)">Acesso restrito a motoristas parceiros</p>
+        <div class="auth-footer" style="font-size:12px;color:var(--gray);line-height:1.5;margin-top:14px">
+          <strong>Login demo:</strong><br>
+          motorista@farmgo.com · senha <strong>1234</strong><br>
+          ou código <strong>MOT001</strong> · senha <strong>1234</strong>
+        </div>
       </div>
     </div>
   </div>
