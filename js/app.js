@@ -1872,14 +1872,31 @@ function advanceOrderStatus(orderId, status) {
   refreshDriverFromOrders();
 }
 
-// ==================== MAPA (Leaflet + OpenStreetMap) ====================
+// ==================== MAPA (OpenStreetMap + OSRM) ====================
 let trackMap = null;
 let trackMarkers = { pharmacy: null, driver: null, customer: null };
 let trackRouteLine = null;
+let trackTraveledLine = null;
 let driverAnimTimer = null;
+let lastRouteCoords = null;
+let lastRouteMeta = null;
 
-const DEFAULT_PHARMACY = { lat: -23.561414, lng: -46.655881 }; // Av. Paulista
+const DEFAULT_PHARMACY = { lat: -23.561414, lng: -46.655881, label: 'Farmácia · Av. Paulista' };
 const DEFAULT_CUSTOMER = { lat: -23.5575, lng: -46.6625 };
+const OSRM_BASE = 'https://router.project-osrm.org';
+
+function formatDistance(meters) {
+  if (meters >= 1000) return (meters / 1000).toFixed(1).replace('.', ',') + ' km';
+  return Math.round(meters) + ' m';
+}
+
+function formatDuration(seconds) {
+  const m = Math.max(1, Math.round(seconds / 60));
+  if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return h + ' h ' + rm + ' min';
+}
 
 function createMapIcon(emoji, bg) {
   return L.divIcon({
@@ -1904,26 +1921,57 @@ function ensureTrackMap() {
     return trackMap;
   }
 
-  trackMap = L.map(el, {
-    zoomControl: true,
-    attributionControl: true
-  }).setView([DEFAULT_PHARMACY.lat, DEFAULT_PHARMACY.lng], 14);
-
+  trackMap = L.map(el, { zoomControl: true }).setView(
+    [DEFAULT_PHARMACY.lat, DEFAULT_PHARMACY.lng],
+    14
+  );
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap'
   }).addTo(trackMap);
-
   setTimeout(() => trackMap.invalidateSize(), 200);
   return trackMap;
 }
 
+function clearDriverAnimation() {
+  if (driverAnimTimer) {
+    clearInterval(driverAnimTimer);
+    driverAnimTimer = null;
+  }
+}
+
+function clearMapLayers() {
+  clearDriverAnimation();
+  if (!trackMap) return;
+  ['pharmacy', 'driver', 'customer'].forEach(k => {
+    if (trackMarkers[k]) {
+      trackMap.removeLayer(trackMarkers[k]);
+      trackMarkers[k] = null;
+    }
+  });
+  if (trackRouteLine) {
+    trackMap.removeLayer(trackRouteLine);
+    trackRouteLine = null;
+  }
+  if (trackTraveledLine) {
+    trackMap.removeLayer(trackTraveledLine);
+    trackTraveledLine = null;
+  }
+}
+
 async function geocodeAddress(address) {
   if (!address) return null;
-  const q = [address.street, address.number, address.neighborhood, address.city, address.state, 'Brasil']
+  const q = [
+    address.street,
+    address.number,
+    address.neighborhood,
+    address.city || 'São Paulo',
+    address.state || 'SP',
+    'Brasil'
+  ]
     .filter(Boolean)
     .join(', ');
-  const cacheKey = 'farmgo_geo_' + q;
+  const cacheKey = 'farmgo_geo_osm_' + q;
   try {
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) return JSON.parse(cached);
@@ -1931,14 +1979,16 @@ async function geocodeAddress(address) {
 
   try {
     const url =
-      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+      'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=' +
       encodeURIComponent(q);
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json' }
-    });
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
     const data = await res.json();
     if (data && data[0]) {
-      const point = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      const point = {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon),
+        label: data[0].display_name || q
+      };
       try {
         sessionStorage.setItem(cacheKey, JSON.stringify(point));
       } catch (_) {}
@@ -1950,131 +2000,278 @@ async function geocodeAddress(address) {
   return null;
 }
 
-function clearDriverAnimation() {
-  if (driverAnimTimer) {
-    clearInterval(driverAnimTimer);
-    driverAnimTimer = null;
+async function fetchDrivingRoute(from, to) {
+  const cacheKey =
+    'farmgo_osrm_' +
+    from.lat.toFixed(4) +
+    ',' +
+    from.lng.toFixed(4) +
+    '_' +
+    to.lat.toFixed(4) +
+    ',' +
+    to.lng.toFixed(4);
+  try {
+    const c = sessionStorage.getItem(cacheKey);
+    if (c) return JSON.parse(c);
+  } catch (_) {}
+
+  try {
+    const url =
+      OSRM_BASE +
+      '/route/v1/driving/' +
+      from.lng +
+      ',' +
+      from.lat +
+      ';' +
+      to.lng +
+      ',' +
+      to.lat +
+      '?overview=full&geometries=geojson&steps=true&alternatives=true';
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.code !== 'Ok' || !data.routes?.[0]) return null;
+    const best = data.routes.slice().sort((a, b) => a.duration - b.duration)[0];
+    const coords = best.geometry.coordinates.map(c => [c[1], c[0]]);
+    const steps = [];
+    (best.legs || []).forEach(leg => {
+      (leg.steps || []).forEach(s => {
+        if (s.name) steps.push({ name: s.name, distance: s.distance, duration: s.duration });
+      });
+    });
+    const result = {
+      coords,
+      distance: best.distance,
+      duration: best.duration,
+      steps,
+      alternatives: data.routes.length - 1
+    };
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify(result));
+    } catch (_) {}
+    return result;
+  } catch (e) {
+    console.warn('OSRM:', e);
+    return null;
   }
 }
 
-function animateDriver(from, to, durationMs) {
+async function optimizeDeliveryTrip(start, points) {
+  if (!points?.length) return null;
+  if (points.length === 1) {
+    const route = await fetchDrivingRoute(start, points[0]);
+    return {
+      order: points,
+      coords: route?.coords || [
+        [start.lat, start.lng],
+        [points[0].lat, points[0].lng]
+      ],
+      distance: route?.distance || 0,
+      duration: route?.duration || 0
+    };
+  }
+
+  try {
+    const coordsStr = [start, ...points].map(p => p.lng + ',' + p.lat).join(';');
+    const url =
+      OSRM_BASE +
+      '/trip/v1/driving/' +
+      coordsStr +
+      '?source=first&destination=any&roundtrip=false&geometries=geojson&overview=full';
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.code === 'Ok' && data.trips?.[0]) {
+      const trip = data.trips[0];
+      const wp = data.waypoints || [];
+      const ordered = wp
+        .map((w, i) => ({ i, order: w.waypoint_index }))
+        .sort((a, b) => a.order - b.order)
+        .map(x => x.i)
+        .filter(i => i > 0)
+        .map(i => points[i - 1]);
+      return {
+        order: ordered.length ? ordered : points,
+        coords: trip.geometry.coordinates.map(c => [c[1], c[0]]),
+        distance: trip.distance,
+        duration: trip.duration
+      };
+    }
+  } catch (e) {
+    console.warn('OSRM trip:', e);
+  }
+  return null;
+}
+
+function animateDriverAlongRoute(coords, durationMs) {
   clearDriverAnimation();
-  if (!trackMarkers.driver || !from || !to) return;
+  if (!trackMarkers.driver || !coords || coords.length < 2) return;
+
+  const seg = [];
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const d = trackMap.distance(coords[i - 1], coords[i]);
+    total += d;
+    seg.push(total);
+  }
+  if (total <= 0) return;
 
   const start = Date.now();
   driverAnimTimer = setInterval(() => {
     const t = Math.min(1, (Date.now() - start) / durationMs);
-    const lat = from.lat + (to.lat - from.lat) * t;
-    const lng = from.lng + (to.lng - from.lng) * t;
+    const targetDist = total * t;
+    let i = 0;
+    while (i < seg.length && seg[i] < targetDist) i++;
+    const prevDist = i === 0 ? 0 : seg[i - 1];
+    const nextDist = seg[i] || total;
+    const a = coords[i] || coords[coords.length - 1];
+    const b = coords[i + 1] || a;
+    const localT = nextDist === prevDist ? 1 : (targetDist - prevDist) / (nextDist - prevDist);
+    const lat = a[0] + (b[0] - a[0]) * localT;
+    const lng = a[1] + (b[1] - a[1]) * localT;
     trackMarkers.driver.setLatLng([lat, lng]);
+    if (trackTraveledLine) {
+      const traveled = coords.slice(0, i + 1);
+      traveled.push([lat, lng]);
+      trackTraveledLine.setLatLngs(traveled);
+    }
     if (t >= 1) clearDriverAnimation();
-  }, 200);
+  }, 250);
 }
 
 async function updateTrackingMap(order) {
   const hint = document.getElementById('track-map-hint');
   const map = ensureTrackMap();
   if (!map) {
-    if (hint) hint.textContent = 'Mapa indisponível offline.';
+    if (hint) hint.textContent = 'Mapa indisponível. Verifique a internet.';
     return;
   }
 
-  if (hint) hint.textContent = 'Localizando no mapa…';
+  if (hint) hint.textContent = 'Calculando rota pelas ruas…';
 
-  const pharmacy = DEFAULT_PHARMACY;
+  const pharmacy = {
+    lat: DEFAULT_PHARMACY.lat,
+    lng: DEFAULT_PHARMACY.lng,
+    label: DEFAULT_PHARMACY.label
+  };
+
   let customer = await geocodeAddress(order.address);
   if (!customer) {
-    // offset demo near pharmacy if geocode fails
     customer = {
       lat: DEFAULT_CUSTOMER.lat,
-      lng: DEFAULT_CUSTOMER.lng
+      lng: DEFAULT_CUSTOMER.lng,
+      label: order.address
+        ? `${order.address.street}, ${order.address.number}`
+        : 'Endereço aproximado'
     };
   }
 
-  // Remove old layers
-  ['pharmacy', 'driver', 'customer'].forEach(k => {
-    if (trackMarkers[k]) {
-      map.removeLayer(trackMarkers[k]);
-      trackMarkers[k] = null;
-    }
-  });
-  if (trackRouteLine) {
-    map.removeLayer(trackRouteLine);
-    trackRouteLine = null;
-  }
-  clearDriverAnimation();
+  clearMapLayers();
 
   trackMarkers.pharmacy = L.marker([pharmacy.lat, pharmacy.lng], {
     icon: createMapIcon('💊', '#F97316')
   })
     .addTo(map)
-    .bindPopup('Farmácia');
+    .bindPopup('<strong>Farmácia</strong><br>' + pharmacy.label);
+
+  const custLabel = order.address
+    ? `${order.address.street}, ${order.address.number}` +
+      (order.address.neighborhood ? '<br>' + order.address.neighborhood : '')
+    : customer.label || 'Entrega';
 
   trackMarkers.customer = L.marker([customer.lat, customer.lng], {
     icon: createMapIcon('🏠', '#2563EB')
   })
     .addTo(map)
-    .bindPopup(
-      order.address
-        ? `${order.address.street}, ${order.address.number}`
-        : 'Endereço de entrega'
-    );
+    .bindPopup('<strong>Entrega</strong><br>' + custLabel);
 
-  const bounds = L.latLngBounds([
-    [pharmacy.lat, pharmacy.lng],
-    [customer.lat, customer.lng]
-  ]);
+  const route = await fetchDrivingRoute(pharmacy, customer);
+  let coords;
+  let distance = 0;
+  let duration = 0;
 
-  // Driver position by status
+  if (route?.coords?.length > 1) {
+    coords = route.coords;
+    distance = route.distance;
+    duration = route.duration;
+    lastRouteCoords = coords;
+    lastRouteMeta = {
+      distance,
+      duration,
+      steps: route.steps || [],
+      alternatives: route.alternatives || 0
+    };
+  } else {
+    coords = [
+      [pharmacy.lat, pharmacy.lng],
+      [customer.lat, customer.lng]
+    ];
+    distance = map.distance(coords[0], coords[1]);
+    duration = (distance / 1000 / 25) * 3600;
+    lastRouteMeta = { distance, duration, steps: [], alternatives: 0 };
+  }
+
+  trackRouteLine = L.polyline(coords, {
+    color: '#F97316',
+    weight: 5,
+    opacity: 0.9,
+    lineJoin: 'round'
+  }).addTo(map);
+
+  trackTraveledLine = L.polyline([], {
+    color: '#10B981',
+    weight: 5,
+    opacity: 0.95
+  }).addTo(map);
+
   if (order.status === 'out' || order.status === 'delivered') {
-    let driverPos;
-    if (order.status === 'delivered') {
-      driverPos = customer;
-    } else {
-      // midpoint + slight offset, then animate toward customer
-      driverPos = {
-        lat: pharmacy.lat + (customer.lat - pharmacy.lat) * 0.45,
-        lng: pharmacy.lng + (customer.lng - pharmacy.lng) * 0.45
-      };
-    }
-    trackMarkers.driver = L.marker([driverPos.lat, driverPos.lng], {
+    const startIdx =
+      order.status === 'delivered' ? coords.length - 1 : Math.floor(coords.length * 0.2);
+    const driverPos = coords[startIdx];
+    trackMarkers.driver = L.marker(driverPos, {
       icon: createMapIcon('🏍️', '#10B981')
     })
       .addTo(map)
-      .bindPopup(order.driver?.name || 'Entregador');
-
-    trackRouteLine = L.polyline(
-      [
-        [pharmacy.lat, pharmacy.lng],
-        [driverPos.lat, driverPos.lng],
-        [customer.lat, customer.lng]
-      ],
-      { color: '#F97316', weight: 4, opacity: 0.85, dashArray: '8 8' }
-    ).addTo(map);
-
-    bounds.extend([driverPos.lat, driverPos.lng]);
+      .bindPopup(
+        '<strong>' +
+          (order.driver?.name || 'Entregador') +
+          '</strong><br>' +
+          formatDistance(distance) +
+          ' · ~' +
+          formatDuration(duration)
+      );
 
     if (order.status === 'out') {
-      animateDriver(driverPos, customer, 45000);
+      const remaining = coords.slice(startIdx);
+      const animMs = Math.min(180000, Math.max(30000, duration * 500));
+      animateDriverAlongRoute(remaining, animMs);
     }
-  } else {
-    trackRouteLine = L.polyline(
-      [
-        [pharmacy.lat, pharmacy.lng],
-        [customer.lat, customer.lng]
-      ],
-      { color: '#F97316', weight: 3, opacity: 0.5, dashArray: '6 10' }
-    ).addTo(map);
   }
 
-  map.fitBounds(bounds.pad(0.25));
-  setTimeout(() => map.invalidateSize(), 150);
+  map.fitBounds(L.latLngBounds(coords).pad(0.2));
+  setTimeout(() => map.invalidateSize(), 200);
+
+  const eta = formatDistance(distance) + ' · ~' + formatDuration(duration);
+  const stepsEl = document.getElementById('track-route-steps');
+  if (stepsEl && lastRouteMeta?.steps?.length) {
+    const top = lastRouteMeta.steps
+      .map(s => s.name)
+      .filter(Boolean)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .slice(0, 4);
+    stepsEl.innerHTML = top.length ? '<strong>Rota:</strong> ' + top.join(' → ') : '';
+  }
 
   if (hint) {
-    if (order.status === 'out') hint.textContent = 'Motorista a caminho · mapa ao vivo';
-    else if (order.status === 'delivered') hint.textContent = 'Pedido entregue neste endereço';
-    else if (order.status === 'preparing') hint.textContent = 'Farmácia preparando · rota até você';
-    else hint.textContent = 'Pedido confirmado · aguardando separação';
+    const alt = lastRouteMeta?.alternatives
+      ? ' · melhor de ' + (lastRouteMeta.alternatives + 1) + ' rotas'
+      : '';
+    if (order.status === 'out') hint.textContent = 'Rota otimizada · ' + eta + alt;
+    else if (order.status === 'delivered') hint.textContent = 'Entregue · ' + formatDistance(distance);
+    else hint.textContent = 'OpenStreetMap · ' + eta + alt;
+  }
+  const sub = document.getElementById('track-status-sub');
+  if (sub) {
+    if (order.status === 'delivered') sub.textContent = 'Pedido entregue no endereço';
+    else sub.textContent = 'Distância ' + formatDistance(distance) + ' · ~' + formatDuration(duration);
   }
 }
 
@@ -2292,14 +2489,25 @@ function pharmacyConfirmOrder(id) {
   refreshPharmacyFromOrders();
 }
 
-function refreshDriverFromOrders() {
+async function refreshDriverFromOrders() {
   const out = getOrders().filter(o => o.status === 'out');
   const waiting = getOrders().filter(o => o.status === 'preparing' || o.status === 'confirmed');
   const activeEl = document.getElementById('driver-active-delivery');
+  const optEl = document.getElementById('driver-route-opt');
+
   if (activeEl && out[0]) {
     const o = out[0];
     const items = o.items.map(i => i.name).join(' · ');
     const addr = o.address ? `${o.address.street}, ${o.address.number}` : 'Endereço';
+    let etaHtml = '';
+    if (lastRouteMeta) {
+      etaHtml =
+        '<div style="margin-top:4px"><i class="fas fa-route" style="width:18px;color:var(--primary)"></i> ' +
+        formatDistance(lastRouteMeta.distance) +
+        ' · ~' +
+        formatDuration(lastRouteMeta.duration) +
+        '</div>';
+    }
     activeEl.innerHTML = `
       <div class="order-header">
         <span class="order-id">#${o.id}</span>
@@ -2309,15 +2517,87 @@ function refreshDriverFromOrders() {
       <div style="font-size:13px;color:var(--gray);margin:8px 0">
         <div><i class="fas fa-map-marker-alt" style="color:var(--primary);width:18px"></i> ${addr}</div>
         <div style="margin-top:4px"><i class="fas fa-user" style="width:18px"></i> ${o.customerName || 'Cliente'}</div>
+        ${etaHtml}
       </div>
       <div class="order-footer" style="gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm btn-outline" onclick="alert('Ligando...')"><i class="fas fa-phone"></i> Ligar</button>
         <button class="btn btn-sm btn-primary" onclick="driverMarkDelivered('${o.id}')">Marcar entregue</button>
       </div>`;
   }
+
+  // Otimizar sequência se houver várias entregas pendentes
+  if (optEl) {
+    const pending = [...out, ...waiting].slice(0, 5);
+    if (pending.length >= 2) {
+      optEl.style.display = 'block';
+      optEl.innerHTML =
+        '<button class="btn btn-outline btn-block" onclick="optimizeDriverStops()"><i class="fas fa-magic"></i> Otimizar ordem das entregas</button>' +
+        '<p id="driver-opt-result" style="font-size:12px;color:var(--gray);margin-top:8px"></p>';
+    } else {
+      optEl.style.display = 'none';
+    }
+  }
+
   const activeStat = document.getElementById('driver-stat-active');
   if (activeStat) activeStat.textContent = String(out.length);
 }
+
+async function optimizeDriverStops() {
+  const resultEl = document.getElementById('driver-opt-result');
+  if (resultEl) resultEl.textContent = 'Calculando melhor sequência…';
+
+  const pending = getOrders().filter(o =>
+    o.status === 'out' || o.status === 'preparing' || o.status === 'confirmed'
+  );
+  if (pending.length < 2) {
+    if (resultEl) resultEl.textContent = 'Precisa de pelo menos 2 entregas.';
+    return;
+  }
+
+  const points = [];
+  for (const o of pending.slice(0, 6)) {
+    let geo = await geocodeAddress(o.address);
+    if (!geo) {
+      geo = {
+        lat: DEFAULT_CUSTOMER.lat + (Math.random() - 0.5) * 0.02,
+        lng: DEFAULT_CUSTOMER.lng + (Math.random() - 0.5) * 0.02
+      };
+    }
+    points.push({
+      lat: geo.lat,
+      lng: geo.lng,
+      id: o.id,
+      label: '#' + o.id + ' · ' + (o.address?.street || 'Cliente')
+    });
+  }
+
+  const trip = await optimizeDeliveryTrip(DEFAULT_PHARMACY, points);
+  if (!trip) {
+    if (resultEl) resultEl.textContent = 'Não foi possível otimizar agora.';
+    return;
+  }
+
+  const orderText = trip.order.map((p, i) => i + 1 + '. ' + p.label).join('\n');
+  if (resultEl) {
+    resultEl.innerHTML =
+      '<strong>Ordem otimizada</strong> · ' +
+      formatDistance(trip.distance) +
+      ' · ~' +
+      formatDuration(trip.duration) +
+      '<br><span style="white-space:pre-line">' +
+      trip.order.map((p, i) => i + 1 + '. ' + p.label).join('<br>') +
+      '</span>';
+  }
+  alert(
+    'Rota otimizada pela API OSRM:\n\n' +
+      orderText +
+      '\n\nTotal: ' +
+      formatDistance(trip.distance) +
+      ' · ~' +
+      formatDuration(trip.duration)
+  );
+}
+
 
 function formatCep(input) {
   let v = input.value.replace(/\D/g, '').slice(0, 8);
