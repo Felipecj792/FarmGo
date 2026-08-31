@@ -813,26 +813,46 @@ function persistCart() {
   localStorage.setItem('farmgo_cart', JSON.stringify(cart));
 }
 
-function addToCart(name, price) {
-  // opcional: avisar se estoque baixo
+function addToCart(name, price, pharmacyId, pharmacyName) {
   const prod = Object.values(PRODUCTS).find(p => p.shortName === name || p.name === name);
   if (prod && typeof prod.stock === 'number' && prod.stock <= 0) {
     alert('Produto sem estoque no momento.');
     return;
   }
-  const existing = cart.find(item => item.name === name);
+
+  // Se não veio farmácia, abre seletor (exceto se já tem seleção global)
+  if (!pharmacyId) {
+    const nearest = getNearestPharmacy();
+    pharmacyId = nearest?.id;
+    pharmacyName = nearest?.name;
+  }
+
+  const pharmKey = pharmacyId || 'default';
+  const existing = cart.find(
+    item => item.name === name && (item.pharmacyId || 'default') === pharmKey
+  );
   if (existing) {
     existing.qty += 1;
   } else {
-    cart.push({ name, price, qty: 1 });
+    cart.push({
+      name,
+      price: Number(price),
+      qty: 1,
+      pharmacyId: pharmacyId || null,
+      pharmacyName: pharmacyName || 'Farmácia'
+    });
   }
   persistCart();
   updateCartUI();
-  const badges = document.querySelectorAll('.badge');
-  badges.forEach(b => {
+  document.querySelectorAll('.badge').forEach(b => {
     b.style.transform = 'scale(1.3)';
     setTimeout(() => (b.style.transform = 'scale(1)'), 200);
   });
+}
+
+/** Clique no + do card: abre escolha de farmácia */
+function addToCartWithPharmacyChoice(name, price) {
+  openPharmacyPicker(name, price);
 }
 
 function updateCartUI() {
@@ -858,7 +878,7 @@ function updateCartUI() {
           <div class="med-icon"><i class="fas fa-capsules"></i></div>
           <div class="cart-item-info">
             <strong>${item.name}</strong>
-            <span>R$ ${(item.price * item.qty).toFixed(2).replace('.', ',')}</span>
+            <span>${item.pharmacyName ? item.pharmacyName + ' · ' : ''}R$ ${(item.price * item.qty).toFixed(2).replace('.', ',')}</span>
           </div>
           <div class="qty-selector">
             <button onclick="changeCartQty(${i}, -1)">−</button>
@@ -1486,12 +1506,192 @@ function renderCustomerCatalog() {
 
 
 
+// ==================== FARMÁCIAS (escolha + mais perto) ====================
+const PHARMACIES = [
+  {
+    id: 'drogasil_paulista',
+    name: 'Drogasil Paulista',
+    rating: 4.9,
+    address: 'Av. Paulista, 1000',
+    lat: -23.561414,
+    lng: -46.655881
+  },
+  {
+    id: 'raia_consolacao',
+    name: 'Droga Raia Consolação',
+    rating: 4.8,
+    address: 'Rua da Consolação, 2500',
+    lat: -23.5552,
+    lng: -46.6621
+  },
+  {
+    id: 'pacheco_centro',
+    name: 'Drogaria Pacheco Centro',
+    rating: 4.7,
+    address: 'Rua Direita, 100',
+    lat: -23.5505,
+    lng: -46.6333
+  },
+  {
+    id: 'ultra_jardins',
+    name: 'Ultrafarma Jardins',
+    rating: 4.6,
+    address: 'Alameda Santos, 800',
+    lat: -23.5681,
+    lng: -46.6702
+  },
+  {
+    id: 'nissei_bela',
+    name: 'Farmácia Nissei Bela Vista',
+    rating: 4.5,
+    address: 'Rua Augusta, 1500',
+    lat: -23.5578,
+    lng: -46.6589
+  }
+];
+
+let selectedPharmacyId = null;
+let pickerPending = null; // { name, price }
+
+function haversineKm(a, b) {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const la1 = (a.lat * Math.PI) / 180;
+  const la2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function getUserRefPoint() {
+  // Usa primeiro endereço salvo ou ponto padrão SP
+  const addresses = typeof getAddresses === 'function' ? getAddresses() : [];
+  if (addresses.length && addresses[0]._lat) {
+    return { lat: addresses[0]._lat, lng: addresses[0]._lng };
+  }
+  return { lat: -23.561, lng: -46.656 }; // perto da Paulista
+}
+
+function getPharmaciesSorted() {
+  const user = getUserRefPoint();
+  return PHARMACIES.map(p => ({
+    ...p,
+    distanceKm: haversineKm(user, p)
+  })).sort((a, b) => a.distanceKm - b.distanceKm);
+}
+
+function getNearestPharmacy() {
+  return getPharmaciesSorted()[0] || PHARMACIES[0];
+}
+
+function priceForPharmacy(basePrice, pharmacy, index) {
+  // variação leve de preço por farmácia
+  const factor = 1 + (index * 0.03) - 0.02;
+  return Math.round(basePrice * factor * 100) / 100;
+}
+
+function selectProductPharmacy(id) {
+  selectedPharmacyId = id;
+  renderProductPharmacies();
+  // atualiza preço do botão com preço da farmácia escolhida
+  const list = getPharmaciesSorted();
+  const idx = list.findIndex(p => p.id === id);
+  const p = list[idx];
+  if (p && currentProduct) {
+    const price = priceForPharmacy(currentProduct.price, p, idx);
+    currentProduct._selectedPrice = price;
+    currentProduct._selectedPharmacy = p;
+    const totalEl = document.getElementById('total-price');
+    const priceEl = document.getElementById('prod-price');
+    const q = qty || 1;
+    if (totalEl) totalEl.textContent = (price * q).toFixed(2).replace('.', ',');
+    if (priceEl) priceEl.textContent = 'R$ ' + price.toFixed(2).replace('.', ',');
+  }
+}
+
+function renderProductPharmacies() {
+  const el = document.getElementById('prod-pharmacy-list');
+  if (!el || !currentProduct) return;
+  const list = getPharmaciesSorted();
+  if (!selectedPharmacyId) selectedPharmacyId = list[0]?.id;
+
+  el.innerHTML = list
+    .map((p, i) => {
+      const price = priceForPharmacy(currentProduct.price, p, i);
+      const dist = p.distanceKm < 1
+        ? (p.distanceKm * 1000).toFixed(0) + ' m'
+        : p.distanceKm.toFixed(1).replace('.', ',') + ' km';
+      const nearest = i === 0;
+      const selected = p.id === selectedPharmacyId;
+      return `<div class="pharmacy-option ${selected ? 'selected' : ''}" onclick="selectProductPharmacy('${p.id}')" style="cursor:pointer">
+        <div>
+          <strong>${p.name}${nearest ? ' <span class="tag green" style="font-size:10px">Mais perto</span>' : ''}</strong>
+          <span>${dist} · ${p.rating} ★ · ${p.address}</span>
+        </div>
+        <span class="price">R$ ${price.toFixed(2).replace('.', ',')}</span>
+      </div>`;
+    })
+    .join('');
+}
+
+function openPharmacyPicker(name, price) {
+  pickerPending = { name, price };
+  const modal = document.getElementById('pharmacy-picker-modal');
+  const title = document.getElementById('picker-product-name');
+  const listEl = document.getElementById('picker-pharmacy-list');
+  if (title) title.textContent = name;
+  const list = getPharmaciesSorted();
+  listEl.innerHTML = list
+    .map((p, i) => {
+      const pr = priceForPharmacy(Number(price), p, i);
+      const dist = p.distanceKm < 1
+        ? (p.distanceKm * 1000).toFixed(0) + ' m'
+        : p.distanceKm.toFixed(1).replace('.', ',') + ' km';
+      const nearest = i === 0;
+      return `<div class="pharmacy-option ${nearest ? 'selected' : ''}" style="cursor:pointer;margin-bottom:8px" onclick="confirmPharmacyPicker('${p.id}')">
+        <div>
+          <strong>${p.name}${nearest ? ' <span class="tag green" style="font-size:10px">Recomendada</span>' : ''}</strong>
+          <span>${dist} · ${p.rating} ★</span>
+        </div>
+        <span class="price">R$ ${pr.toFixed(2).replace('.', ',')}</span>
+      </div>`;
+    })
+    .join('');
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.add('active');
+  }
+}
+
+function closePharmacyPicker() {
+  const modal = document.getElementById('pharmacy-picker-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('active');
+  }
+  pickerPending = null;
+}
+
+function confirmPharmacyPicker(pharmacyId) {
+  if (!pickerPending) return;
+  const list = getPharmaciesSorted();
+  const idx = list.findIndex(p => p.id === pharmacyId);
+  const p = list[idx];
+  if (!p) return;
+  const price = priceForPharmacy(Number(pickerPending.price), p, Math.max(0, idx));
+  addToCart(pickerPending.name, price, p.id, p.name);
+  closePharmacyPicker();
+}
+
 function openProduct(id) {
   ensurePharmacyCatalog();
   const p = PRODUCTS[id] || Object.values(PRODUCTS)[0];
   if (!p) return;
-  currentProduct = p;
+  currentProduct = { ...p };
   qty = 1;
+  selectedPharmacyId = null;
 
   document.getElementById('prod-name').textContent = p.name;
   document.getElementById('prod-lab').textContent = p.lab;
@@ -1500,18 +1700,26 @@ function openProduct(id) {
   document.getElementById('prod-comp').textContent = p.comp;
   document.getElementById('prod-usage').textContent = p.usage;
   document.getElementById('prod-contra').textContent = p.contra;
-  document.getElementById('prod-pharm-price').textContent = 'R$ ' + p.price.toFixed(2).replace('.', ',');
-  document.getElementById('prod-pharm-price-2').textContent = 'R$ ' + p.price2.toFixed(2).replace('.', ',');
   document.getElementById('qty').textContent = '1';
   document.getElementById('total-price').textContent = p.price.toFixed(2).replace('.', ',');
 
   const iconEl = document.getElementById('prod-icon');
-  iconEl.className = 'product-icon';
-  iconEl.innerHTML = '<i class="fas ' + p.icon + '"></i>';
+  if (iconEl) {
+    iconEl.className = 'product-icon';
+    iconEl.innerHTML = '<i class="fas ' + (p.icon || 'fa-pills') + '"></i>';
+  }
 
   const tagsEl = document.getElementById('prod-tags');
-  tagsEl.innerHTML =
-    (p.needsRx ? '<span class="tag" style="background:#FEF3C7;color:#D97706">Com receita</span>' : '<span class="tag">Sem receita</span>');
+  if (tagsEl) {
+    tagsEl.innerHTML = p.needsRx
+      ? '<span class="tag" style="background:#FEF3C7;color:#D97706">Com receita</span>'
+      : '<span class="tag">Sem receita</span>';
+  }
+
+  renderProductPharmacies();
+  // seleciona a mais perto e ajusta preço
+  const nearest = getNearestPharmacy();
+  if (nearest) selectProductPharmacy(nearest.id);
 
   showScreen('product');
 }
@@ -1520,13 +1728,21 @@ function changeQty(delta) {
   qty = Math.max(1, qty + delta);
   const qtyEl = document.getElementById('qty');
   const totalEl = document.getElementById('total-price');
+  const unit = currentProduct._selectedPrice || currentProduct.price;
   if (qtyEl) qtyEl.textContent = qty;
-  if (totalEl) totalEl.textContent = (currentProduct.price * qty).toFixed(2).replace('.', ',');
+  if (totalEl) totalEl.textContent = (unit * qty).toFixed(2).replace('.', ',');
 }
 
 function addCurrentProduct() {
+  const pharm = currentProduct._selectedPharmacy || getNearestPharmacy();
+  const unit = currentProduct._selectedPrice || currentProduct.price;
   for (let i = 0; i < qty; i++) {
-    addToCart(currentProduct.shortName, currentProduct.price);
+    addToCart(
+      currentProduct.shortName,
+      unit,
+      pharm?.id,
+      pharm?.name
+    );
   }
   showScreen('cart');
 }
@@ -1555,6 +1771,7 @@ function handleDriverLogin(event) {
     name.charAt(0).toUpperCase() + name.slice(1);
   document.getElementById('driver-login-form').reset();
   showScreen('driver-dashboard');
+  refreshDriverFromOrders();
 }
 
 function handleDriverLogout() {
@@ -1793,6 +2010,9 @@ function placeOrder() {
 
   const id = String(Math.floor(10000 + Math.random() * 90000));
   const now = new Date();
+  const mainPharmacy = cart.find(i => i.pharmacyName)?.pharmacyName || cart[0]?.pharmacyName || null;
+  const mainPharmacyId = cart.find(i => i.pharmacyId)?.pharmacyId || cart[0]?.pharmacyId || null;
+
   const order = {
     id,
     items: cart.map(i => ({ ...i })),
@@ -1803,6 +2023,8 @@ function placeOrder() {
     payment,
     coupon: appliedCoupon ? appliedCoupon.code : null,
     address,
+    pharmacyName: mainPharmacy,
+    pharmacyId: mainPharmacyId,
     customerName: profile.name || 'Cliente',
     customerPhone: profile.phone || '',
     customerEmail: profile.email || '',
@@ -2490,44 +2712,123 @@ function pharmacyConfirmOrder(id) {
 }
 
 async function refreshDriverFromOrders() {
-  const out = getOrders().filter(o => o.status === 'out');
-  const waiting = getOrders().filter(o => o.status === 'preparing' || o.status === 'confirmed');
   const activeEl = document.getElementById('driver-active-delivery');
+  const queueEl = document.getElementById('driver-queue-list');
   const optEl = document.getElementById('driver-route-opt');
 
-  if (activeEl && out[0]) {
-    const o = out[0];
-    const items = o.items.map(i => i.name).join(' · ');
-    const addr = o.address ? `${o.address.street}, ${o.address.number}` : 'Endereço';
-    let etaHtml = '';
-    if (lastRouteMeta) {
-      etaHtml =
-        '<div style="margin-top:4px"><i class="fas fa-route" style="width:18px;color:var(--primary)"></i> ' +
-        formatDistance(lastRouteMeta.distance) +
-        ' · ~' +
-        formatDuration(lastRouteMeta.duration) +
-        '</div>';
+  const out = getOrders().filter(o => o.status === 'out');
+  const queue = getOrders().filter(o => o.status === 'preparing' || o.status === 'confirmed');
+  const deliveredToday = getOrders().filter(o => {
+    if (o.status !== 'delivered') return false;
+    const d = new Date(o.createdAt);
+    const n = new Date();
+    return d.toDateString() === n.toDateString();
+  });
+
+  const setStat = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(v);
+  };
+  setStat('driver-stat-active', out.length);
+  setStat('driver-stat-done', deliveredToday.length);
+  setStat(
+    'driver-stat-today',
+    getOrders().filter(o => new Date(o.createdAt).toDateString() === new Date().toDateString()).length
+  );
+
+  // —— Entrega ativa (em rota) ——
+  if (activeEl) {
+    if (out.length === 0) {
+      activeEl.innerHTML =
+        '<div class="order-card" style="opacity:.85"><div class="order-items">Nenhuma entrega em andamento.<br><span style="color:var(--gray);font-size:13px">Toque em “Saiu para entrega” na fila abaixo.</span></div></div>';
+    } else {
+      activeEl.innerHTML = out
+        .map(o => {
+          const items = o.items.map(i => i.name + (i.qty > 1 ? ' ×' + i.qty : '')).join(' · ');
+          const addr = o.address
+            ? `${o.address.street}, ${o.address.number}` +
+              (o.address.complement ? ' — ' + o.address.complement : '')
+            : 'Endereço';
+          const pharm = o.pharmacyName || o.items?.[0]?.pharmacyName || 'Farmácia';
+          return `<div class="order-card" style="border-color:var(--primary);border-width:1.5px">
+            <div class="order-header">
+              <span class="order-id">#${o.id}</span>
+              <span class="order-status active">Em rota</span>
+            </div>
+            <div class="order-items">${items}</div>
+            <div style="font-size:13px;color:var(--gray);margin:8px 0">
+              <div><i class="fas fa-store" style="width:18px;color:var(--primary)"></i> ${pharm}</div>
+              <div style="margin-top:4px"><i class="fas fa-map-marker-alt" style="width:18px;color:var(--primary)"></i> ${addr}</div>
+              <div style="margin-top:4px"><i class="fas fa-user" style="width:18px"></i> ${o.customerName || 'Cliente'}${o.customerPhone ? ' · ' + o.customerPhone : ''}</div>
+            </div>
+            <div class="order-footer" style="gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm btn-outline" onclick="alert('Ligando para o cliente...')"><i class="fas fa-phone"></i> Ligar</button>
+              <button class="btn btn-sm btn-outline" onclick="openTracking('${o.id}')"><i class="fas fa-map"></i> Mapa</button>
+              <button class="btn btn-sm btn-primary" onclick="driverConfirmDelivered('${o.id}')"><i class="fas fa-check"></i> Confirmar entrega</button>
+            </div>
+          </div>`;
+        })
+        .join('');
     }
-    activeEl.innerHTML = `
-      <div class="order-header">
-        <span class="order-id">#${o.id}</span>
-        <span class="order-status active">Em rota</span>
-      </div>
-      <div class="order-items">${items}</div>
-      <div style="font-size:13px;color:var(--gray);margin:8px 0">
-        <div><i class="fas fa-map-marker-alt" style="color:var(--primary);width:18px"></i> ${addr}</div>
-        <div style="margin-top:4px"><i class="fas fa-user" style="width:18px"></i> ${o.customerName || 'Cliente'}</div>
-        ${etaHtml}
-      </div>
-      <div class="order-footer" style="gap:8px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-outline" onclick="alert('Ligando...')"><i class="fas fa-phone"></i> Ligar</button>
-        <button class="btn btn-sm btn-primary" onclick="driverMarkDelivered('${o.id}')">Marcar entregue</button>
-      </div>`;
   }
 
-  // Otimizar sequência se houver várias entregas pendentes
+  // —— Fila (prontos para sair) ——
+  if (queueEl) {
+    if (queue.length === 0) {
+      queueEl.innerHTML =
+        '<p style="color:var(--gray);font-size:14px">Nenhum pedido na fila. Quando a farmácia separar, aparece aqui.</p>';
+    } else {
+      // ordena por distância aproximada do ponto do motorista/farmácia
+      const ref = DEFAULT_PHARMACY;
+      const enriched = await Promise.all(
+        queue.map(async o => {
+          let distKm = 999;
+          try {
+            const geo = await geocodeAddress(o.address);
+            if (geo) distKm = haversineKm(ref, geo);
+          } catch (_) {}
+          return { order: o, distKm };
+        })
+      );
+      enriched.sort((a, b) => a.distKm - b.distKm);
+
+      queueEl.innerHTML = enriched
+        .map(({ order: o, distKm }, i) => {
+          const items = o.items.map(it => it.name).join(' · ');
+          const addr = o.address ? `${o.address.street}, ${o.address.number}` : 'Endereço';
+          const distLabel =
+            distKm >= 999
+              ? '—'
+              : distKm < 1
+                ? Math.round(distKm * 1000) + ' m'
+                : distKm.toFixed(1).replace('.', ',') + ' km';
+          const nextBadge = i === 0 && out.length === 0
+            ? ' <span class="tag green" style="font-size:10px">Próxima</span>'
+            : '';
+          return `<div class="order-card">
+            <div class="order-header">
+              <span class="order-id">#${o.id}${nextBadge}</span>
+              <span class="order-status">${o.status === 'preparing' ? 'Pronto' : 'Aguardando'}</span>
+            </div>
+            <div class="order-items">${items}</div>
+            <div style="font-size:13px;color:var(--gray);margin:8px 0">
+              <div><i class="fas fa-map-marker-alt" style="width:18px"></i> ${addr}</div>
+              <div style="margin-top:4px"><i class="fas fa-user" style="width:18px"></i> ${o.customerName || 'Cliente'}</div>
+            </div>
+            <div class="order-footer" style="gap:8px;flex-wrap:wrap">
+              <span>~${distLabel}</span>
+              <button class="btn btn-sm btn-primary" onclick="driverStartDelivery('${o.id}')">
+                <i class="fas fa-motorcycle"></i> Saiu para entrega
+              </button>
+            </div>
+          </div>`;
+        })
+        .join('');
+    }
+  }
+
   if (optEl) {
-    const pending = [...out, ...waiting].slice(0, 5);
+    const pending = [...out, ...queue].slice(0, 5);
     if (pending.length >= 2) {
       optEl.style.display = 'block';
       optEl.innerHTML =
@@ -2537,17 +2838,89 @@ async function refreshDriverFromOrders() {
       optEl.style.display = 'none';
     }
   }
+}
 
-  const activeStat = document.getElementById('driver-stat-active');
-  if (activeStat) activeStat.textContent = String(out.length);
+/** Motorista: sai da farmácia / inicia rota */
+function driverStartDelivery(orderId) {
+  advanceOrderStatus(orderId, 'out');
+  // garante motorista no pedido
+  const orders = getOrders();
+  const o = orders.find(x => x.id === orderId);
+  if (o) {
+    o.driver = o.driver || {
+      name: document.getElementById('driver-name')?.textContent || 'Motorista',
+      phone: '',
+      rating: 4.9
+    };
+    saveOrders(orders);
+  }
+  refreshDriverFromOrders();
+  // opcional: abrir rastreio
+  // openTracking(orderId);
+}
+
+/** Motorista: confirma entrega e calcula a próxima */
+async function driverConfirmDelivered(orderId) {
+  advanceOrderStatus(orderId, 'delivered');
+
+  // Calcula próxima mais próxima
+  const queue = getOrders().filter(o => o.status === 'preparing' || o.status === 'confirmed');
+  let nextId = null;
+  let nextDist = Infinity;
+
+  if (queue.length) {
+    const ref = DEFAULT_PHARMACY;
+    for (const o of queue) {
+      try {
+        const geo = await geocodeAddress(o.address);
+        if (geo) {
+          const d = haversineKm(ref, geo);
+          if (d < nextDist) {
+            nextDist = d;
+            nextId = o.id;
+          }
+        } else if (!nextId) {
+          nextId = o.id;
+        }
+      } catch (_) {
+        if (!nextId) nextId = o.id;
+      }
+    }
+  }
+
+  await refreshDriverFromOrders();
+
+  if (nextId) {
+    const distLabel =
+      nextDist < Infinity
+        ? nextDist < 1
+          ? Math.round(nextDist * 1000) + ' m'
+          : nextDist.toFixed(1).replace('.', ',') + ' km'
+        : '';
+    const go = confirm(
+      'Entrega #' +
+        orderId +
+        ' confirmada!\n\nPróxima mais perto: #' +
+        nextId +
+        (distLabel ? ' (~' + distLabel + ')' : '') +
+        '\n\nSair para essa entrega agora?'
+    );
+    if (go) driverStartDelivery(nextId);
+  } else {
+    alert('Entrega #' + orderId + ' confirmada!\nNão há mais pedidos na fila.');
+  }
+}
+
+function driverMarkDelivered(orderId) {
+  driverConfirmDelivered(orderId);
 }
 
 async function optimizeDriverStops() {
   const resultEl = document.getElementById('driver-opt-result');
   if (resultEl) resultEl.textContent = 'Calculando melhor sequência…';
 
-  const pending = getOrders().filter(o =>
-    o.status === 'out' || o.status === 'preparing' || o.status === 'confirmed'
+  const pending = getOrders().filter(
+    o => o.status === 'out' || o.status === 'preparing' || o.status === 'confirmed'
   );
   if (pending.length < 2) {
     if (resultEl) resultEl.textContent = 'Precisa de pelo menos 2 entregas.';
@@ -2577,115 +2950,17 @@ async function optimizeDriverStops() {
     return;
   }
 
-  const orderText = trip.order.map((p, i) => i + 1 + '. ' + p.label).join('\n');
   if (resultEl) {
     resultEl.innerHTML =
       '<strong>Ordem otimizada</strong> · ' +
       formatDistance(trip.distance) +
       ' · ~' +
       formatDuration(trip.duration) +
-      '<br><span style="white-space:pre-line">' +
-      trip.order.map((p, i) => i + 1 + '. ' + p.label).join('<br>') +
-      '</span>';
-  }
-  alert(
-    'Rota otimizada pela API OSRM:\n\n' +
-      orderText +
-      '\n\nTotal: ' +
-      formatDistance(trip.distance) +
-      ' · ~' +
-      formatDuration(trip.duration)
-  );
-}
-
-
-function formatCep(input) {
-  let v = input.value.replace(/\D/g, '').slice(0, 8);
-  if (v.length > 5) v = v.slice(0, 5) + '-' + v.slice(5);
-  input.value = v;
-}
-
-function applyCoupon() {
-  const input = document.getElementById('co-coupon');
-  const msg = document.getElementById('coupon-msg');
-  if (!input || !msg) return;
-
-  const code = input.value.trim().toUpperCase();
-  const coupons = {
-    PRIMEIRA: { type: 'frete', value: 0, label: 'Frete grátis aplicado!' },
-    FRETE10: { type: 'frete', value: 0, label: 'Frete grátis aplicado!' },
-    DESCONTO10: { type: 'percent', value: 10, label: '10% de desconto aplicado!' },
-    FARMGO5: { type: 'fixed', value: 5, label: 'R$ 5,00 de desconto aplicado!' }
-  };
-
-  if (!code) {
-    msg.style.display = 'block';
-    msg.style.color = 'var(--danger)';
-    msg.textContent = 'Digite um cupom.';
-    return;
-  }
-
-  if (coupons[code]) {
-    if (code === 'PRIMEIRA' && !isFirstPurchase()) {
-      msg.style.display = 'block';
-      msg.style.color = 'var(--danger)';
-      msg.textContent = 'Cupom válido apenas na primeira compra.';
-      appliedCoupon = null;
-      updateTotals();
-      return;
-    }
-    appliedCoupon = { code, ...coupons[code] };
-    msg.style.display = 'block';
-    msg.style.color = 'var(--primary)';
-    msg.textContent = coupons[code].label;
-    updateTotals();
-  } else {
-    appliedCoupon = null;
-    msg.style.display = 'block';
-    msg.style.color = 'var(--danger)';
-    msg.textContent = 'Cupom inválido.';
-    updateTotals();
+      '<br>' +
+      trip.order.map((p, i) => i + 1 + '. ' + p.label).join('<br>');
   }
 }
 
-// ==================== CATEGORIES ====================
-function filterCategory(cat, btn) {
-  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-
-  document.querySelectorAll('#home .med-card[data-cat]').forEach(card => {
-    const cats = (card.getAttribute('data-cat') || '').split(/\s+/);
-    const show = cat === 'todos' || cats.includes(cat);
-    card.style.display = show ? 'flex' : 'none';
-  });
-
-  if (cat !== 'todos') {
-    showScreen('search');
-    document.querySelectorAll('#search-results .med-card').forEach(card => {
-      const cats = (card.getAttribute('data-cat') || '').split(/\s+/);
-      card.style.display = cats.includes(cat) ? 'flex' : 'none';
-    });
-  }
-}
-
-function applySearchFilter(type, btn) {
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  const cards = document.querySelectorAll('#search-results .med-card');
-  cards.forEach(card => {
-    const cats = (card.getAttribute('data-cat') || '');
-    const text = card.innerText.toLowerCase();
-    let show = true;
-    if (type === 'receita') show = text.includes('receita');
-    else if (type === 'genericos') show = cats.includes('genericos');
-    else if (type === 'baratos') {
-      const priceEl = card.querySelector('.price');
-      const p = priceEl ? parseFloat(priceEl.textContent.replace(/[^\d,]/g, '').replace(',', '.')) : 999;
-      show = p <= 20;
-    }
-    card.style.display = show ? 'flex' : 'none';
-  });
-}
 
 // ==================== SEARCH FILTER ====================
 function filterMeds() {
@@ -2697,28 +2972,6 @@ function filterMeds() {
     const name = card.querySelector('strong').textContent.toLowerCase();
     card.style.display = name.includes(query) ? 'flex' : 'none';
   });
-}
-
-// Override driver mark delivered to use orders store
-function driverMarkDelivered(orderId) {
-  advanceOrderStatus(orderId, 'delivered');
-  const card = document.getElementById('driver-active-delivery');
-  if (card) {
-    card.innerHTML =
-      '<div class="order-header"><span class="order-id">#' +
-      orderId +
-      '</span><span class="order-status done">Entregue</span></div>' +
-      '<div class="order-items">Entrega concluída com sucesso!</div>';
-  }
-  const done = document.getElementById('driver-stat-done');
-  if (done) done.textContent = String(Number(done.textContent || 0) + 1);
-  refreshDriverFromOrders();
-}
-
-function driverStartDelivery(orderId) {
-  advanceOrderStatus(orderId, 'out');
-  alert('Entrega #' + orderId + ' iniciada!');
-  refreshDriverFromOrders();
 }
 
 // ==================== INIT ====================
