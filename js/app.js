@@ -8,6 +8,8 @@ function showScreen(id) {
   }
   updateCartBadges();
   if (id === 'profile' || id === 'profile-edit' || id === 'profile-addresses' || id === 'profile-notifs') updateProfileUI();
+  if (id === 'profile-notifs') renderNotifPrefs();
+  if (id === 'notifications') renderNotificationsList();
   if (id === 'orders') renderOrdersList('active');
   if (id === 'tracking' && trackMap) setTimeout(() => trackMap.invalidateSize(), 200);
   if (id === 'prescription') renderRxHistory();
@@ -752,26 +754,345 @@ function removeAddress(index) {
   renderAddressList();
 }
 
+function getNotifPrefs() {
+  try {
+    return JSON.parse(
+      localStorage.getItem('farmgo_notifs') ||
+        '{"orders":true,"promo":true,"push":true}'
+    );
+  } catch {
+    return { orders: true, promo: true, push: true };
+  }
+}
+
 function renderNotifPrefs() {
-  const prefs = JSON.parse(localStorage.getItem('farmgo_notifs') || '{"orders":true,"promo":true}');
+  const prefs = getNotifPrefs();
   const o = document.getElementById('notif-orders');
   const p = document.getElementById('notif-promo');
+  const push = document.getElementById('notif-push');
   if (o) o.checked = !!prefs.orders;
   if (p) p.checked = !!prefs.promo;
+  if (push) push.checked = prefs.push !== false;
+  updatePushPermissionStatus();
 }
 
 function saveNotifPrefs() {
   const prefs = {
     orders: document.getElementById('notif-orders')?.checked ?? true,
-    promo: document.getElementById('notif-promo')?.checked ?? true
+    promo: document.getElementById('notif-promo')?.checked ?? true,
+    push: document.getElementById('notif-push')?.checked ?? true
   };
   localStorage.setItem('farmgo_notifs', JSON.stringify(prefs));
   const msg = document.getElementById('notif-msg');
   if (msg) {
     msg.style.display = 'block';
     msg.textContent = 'Preferências salvas!';
-    setTimeout(() => { msg.style.display = 'none'; }, 1500);
+    setTimeout(() => {
+      msg.style.display = 'none';
+    }, 1500);
   }
+  if (prefs.push) requestPushPermission(true);
+}
+
+// ==================== NOTIFICAÇÕES EM TEMPO REAL ====================
+const NOTIF_KEY = 'farmgo_notifications_v1';
+let notifChannel = null;
+try {
+  notifChannel = new BroadcastChannel('farmgo_notifs');
+  notifChannel.onmessage = (ev) => {
+    if (ev.data && ev.data.type === 'ORDER_STATUS') {
+      handleRealtimeNotification(ev.data.payload, { skipBroadcast: true });
+    }
+  };
+} catch (_) {}
+
+function getNotifications() {
+  try {
+    return JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveNotifications(list) {
+  localStorage.setItem(NOTIF_KEY, JSON.stringify(list.slice(0, 50)));
+  updateNotifBadge();
+}
+
+function updateNotifBadge() {
+  const unread = getNotifications().filter(n => !n.read).length;
+  document.querySelectorAll('#notif-badge').forEach(b => {
+    if (unread > 0) {
+      b.style.display = 'flex';
+      b.textContent = unread > 9 ? '9+' : String(unread);
+    } else {
+      b.style.display = 'none';
+    }
+  });
+}
+
+function showToast(title, body, onClick) {
+  const box = document.getElementById('toast-container');
+  if (!box) return;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML =
+    '<div class="toast-icon"><i class="fas fa-bell"></i></div>' +
+    '<div class="toast-body"><strong></strong><span></span></div>';
+  el.querySelector('strong').textContent = title;
+  el.querySelector('span').textContent = body;
+  el.onclick = () => {
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 250);
+    if (onClick) onClick();
+  };
+  box.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 250);
+  }, 4500);
+}
+
+async function showSystemNotification(title, body, data) {
+  const prefs = getNotifPrefs();
+  if (prefs.push === false) return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  const opts = {
+    body,
+    tag: data?.orderId ? 'order-' + data.orderId : 'farmgo',
+    renotify: true,
+    data: data || {}
+  };
+
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, opts);
+      return;
+    }
+  } catch (_) {}
+
+  try {
+    const n = new Notification(title, opts);
+    n.onclick = () => {
+      window.focus();
+      if (data?.orderId) openTracking(data.orderId);
+      n.close();
+    };
+  } catch (_) {}
+}
+
+function updatePushPermissionStatus() {
+  const el = document.getElementById('notif-perm-status');
+  if (!el) return;
+  if (!('Notification' in window)) {
+    el.textContent = 'Este navegador não suporta notificações do sistema.';
+    return;
+  }
+  const map = {
+    granted: 'Alertas do navegador: ativados ✓',
+    denied: 'Alertas bloqueados nas configurações do navegador.',
+    default: 'Permissão ainda não concedida — toque em “Ativar alertas”.'
+  };
+  el.textContent = map[Notification.permission] || '';
+}
+
+async function requestPushPermission(silent) {
+  if (!('Notification' in window)) {
+    if (!silent) alert('Notificações não suportadas neste navegador.');
+    return false;
+  }
+  try {
+    const perm = await Notification.requestPermission();
+    updatePushPermissionStatus();
+    if (perm === 'granted') {
+      await registerServiceWorker();
+      if (!silent) {
+        showToast('Notificações ativas', 'Você receberá alertas de status do pedido.');
+        const msg = document.getElementById('notif-msg');
+        if (msg) {
+          msg.style.display = 'block';
+          msg.textContent = 'Alertas do navegador ativados!';
+        }
+      }
+      return true;
+    }
+    if (!silent && perm === 'denied') {
+      alert('Permissão negada. Ative nas configurações do navegador/site.');
+    }
+  } catch (e) {
+    console.warn(e);
+  }
+  return false;
+}
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    // Só registra em http(s) — file:// não funciona
+    if (location.protocol === 'file:') return null;
+    const reg = await navigator.serviceWorker.register('./sw.js');
+    return reg;
+  } catch (e) {
+    console.warn('SW:', e);
+    return null;
+  }
+}
+
+const STATUS_NOTIF = {
+  pending: {
+    title: 'Pedido recebido',
+    body: 'Aguardando a farmácia confirmar.'
+  },
+  confirmed: {
+    title: 'Pedido confirmado',
+    body: 'A farmácia confirmou seu pedido.'
+  },
+  preparing: {
+    title: 'Farmácia separando',
+    body: 'Seus medicamentos estão sendo separados.'
+  },
+  out: {
+    title: 'Saiu para entrega',
+    body: 'O motorista está a caminho!'
+  },
+  delivered: {
+    title: 'Pedido entregue',
+    body: 'Entrega concluída. Obrigado por usar o FarmGo!'
+  }
+};
+
+function handleRealtimeNotification(payload, opts = {}) {
+  const prefs = getNotifPrefs();
+  if (prefs.orders === false) return;
+
+  const { orderId, status, role } = payload;
+  const msg = STATUS_NOTIF[status] || {
+    title: 'Atualização do pedido',
+    body: 'Status: ' + status
+  };
+
+  const item = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    title: msg.title,
+    body: (orderId ? '#' + orderId + ' · ' : '') + msg.body,
+    orderId: orderId || null,
+    status,
+    role: role || 'client',
+    read: false,
+    at: new Date().toISOString()
+  };
+
+  const list = getNotifications();
+  list.unshift(item);
+  saveNotifications(list);
+
+  showToast(item.title, item.body, () => {
+    markNotificationRead(item.id);
+    if (item.orderId) openTracking(item.orderId);
+  });
+
+  showSystemNotification(item.title, item.body, {
+    orderId: item.orderId,
+    status
+  });
+
+  // farmácia / motorista toasts também
+  if (role === 'pharmacy') {
+    showToast('Novo pedido', 'Pedido #' + orderId + ' aguardando confirmação.');
+  }
+  if (role === 'driver' && status === 'preparing') {
+    showToast('Pedido pronto', '#' + orderId + ' separado — pode sair para entrega.');
+  }
+
+  if (!opts.skipBroadcast && notifChannel) {
+    try {
+      notifChannel.postMessage({ type: 'ORDER_STATUS', payload });
+    } catch (_) {}
+  }
+
+  // Atualiza UI se centros abertos
+  if (document.getElementById('notifications')?.classList.contains('active')) {
+    renderNotificationsList();
+  }
+}
+
+function notifyOrderStatus(orderId, status, extra = {}) {
+  handleRealtimeNotification({ orderId, status, ...extra });
+}
+
+function renderNotificationsList() {
+  const el = document.getElementById('notifications-list');
+  if (!el) return;
+  const list = getNotifications();
+  if (!list.length) {
+    el.innerHTML =
+      '<div class="empty-state" style="padding:40px 20px"><i class="fas fa-bell-slash"></i><h3>Nenhuma notificação</h3><p>Atualizações dos pedidos aparecem aqui em tempo real</p></div>';
+    return;
+  }
+  el.innerHTML = list
+    .map(n => {
+      const when = new Date(n.at).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      return `<div class="notif-item ${n.read ? '' : 'unread'}" onclick="openNotification('${n.id}')">
+        <div class="notif-item-icon"><i class="fas fa-box"></i></div>
+        <div>
+          <strong>${n.title}</strong>
+          <p>${n.body}</p>
+          <time>${when}</time>
+        </div>
+      </div>`;
+    })
+    .join('');
+}
+
+function markNotificationRead(id) {
+  const list = getNotifications();
+  const n = list.find(x => x.id === id);
+  if (n) n.read = true;
+  saveNotifications(list);
+}
+
+function openNotification(id) {
+  const list = getNotifications();
+  const n = list.find(x => x.id === id);
+  if (!n) return;
+  n.read = true;
+  saveNotifications(list);
+  renderNotificationsList();
+  if (n.orderId) openTracking(n.orderId);
+}
+
+function clearAllNotifications() {
+  saveNotifications([]);
+  renderNotificationsList();
+}
+
+function notifyNewOrderToPharmacy(orderId) {
+  // toast para quem estiver no painel farmácia (mesma aba)
+  const dash = document.getElementById('pharmacy-dashboard');
+  if (dash && dash.classList.contains('active')) {
+    showToast('Novo pedido #' + orderId, 'Confirme e separe os itens.');
+  }
+  // grava notificação genérica
+  const list = getNotifications();
+  list.unshift({
+    id: 'ph' + Date.now(),
+    title: 'Novo pedido na farmácia',
+    body: 'Pedido #' + orderId + ' aguardando confirmação.',
+    orderId,
+    status: 'pending',
+    role: 'pharmacy',
+    read: false,
+    at: new Date().toISOString()
+  });
+  saveNotifications(list);
 }
 
 async function checkSession() {
@@ -2075,11 +2396,11 @@ function placeOrder() {
     customerName: profile.name || 'Cliente',
     customerPhone: profile.phone || '',
     customerEmail: profile.email || '',
-    status: 'confirmed', // confirmed | preparing | out | delivered
+    status: 'pending', // pending → confirmed → preparing → out → delivered
     driver: null,
     createdAt: now.toISOString(),
     timeline: [
-      { key: 'confirmed', label: 'Pedido confirmado', at: now.toISOString() },
+      { key: 'confirmed', label: 'Pedido confirmado', at: null },
       { key: 'preparing', label: 'Farmácia separando', at: null },
       { key: 'out', label: 'Saiu para entrega', at: null },
       { key: 'delivered', label: 'Entregue', at: null }
@@ -2109,10 +2430,8 @@ function placeOrder() {
   updateCartUI();
   updateFirstPurchaseUI();
 
-  // Simula progresso da farmácia
-  setTimeout(() => advanceOrderStatus(id, 'preparing'), 4000);
-  setTimeout(() => advanceOrderStatus(id, 'out'), 10000);
-
+  notifyOrderStatus(id, 'pending');
+  notifyNewOrderToPharmacy(id);
   openTracking(id);
 }
 
@@ -2120,25 +2439,50 @@ function advanceOrderStatus(orderId, status) {
   const orders = getOrders();
   const order = orders.find(o => o.id === orderId);
   if (!order || order.status === 'delivered') return;
+
   order.status = status;
   const now = new Date().toISOString();
-  order.timeline.forEach(t => {
-    if (t.key === status && !t.at) t.at = now;
-    // mark previous as done times
-    const order_keys = ['confirmed', 'preparing', 'out', 'delivered'];
-    const idx = order_keys.indexOf(status);
+
+  // timeline do cliente (sem "pending")
+  const order_keys = ['confirmed', 'preparing', 'out', 'delivered'];
+  const idx = order_keys.indexOf(status);
+  if (idx >= 0) {
     order_keys.slice(0, idx + 1).forEach(k => {
-      const step = order.timeline.find(x => x.key === k);
+      const step = order.timeline.find(t => t.key === k);
       if (step && !step.at) step.at = now;
     });
-  });
-  if (status === 'out' && !order.driver) {
-    order.driver = { name: 'Carlos Silva', phone: '(11) 98888-0000', rating: 4.9 };
   }
+
+  if (status === 'out' && !order.driver) {
+    order.driver = {
+      name: (typeof currentDriver !== 'undefined' && currentDriver?.name) || 'Motorista',
+      phone: '',
+      rating: (typeof currentDriver !== 'undefined' && currentDriver?.rating) || 4.9
+    };
+  }
+
   saveOrders(orders);
+
+  // Notificação em tempo real (cliente + sistema)
+  notifyOrderStatus(orderId, status);
+
+  // Aviso extra para motorista quando pedido fica pronto
+  if (status === 'preparing') {
+    const dash = document.getElementById('driver-dashboard');
+    if (dash && dash.classList.contains('active')) {
+      showToast('Pedido pronto', '#' + orderId + ' separado — saia para entrega.');
+    }
+  }
+
+  // Atualiza painel do cliente se estiver aberto
   if (currentTrackId === orderId) renderTracking(orderId);
+  const ordersScreen = document.getElementById('orders');
+  if (ordersScreen && ordersScreen.classList.contains('active')) {
+    renderOrdersList(ordersListMode || 'active');
+  }
+
   refreshPharmacyFromOrders();
-  refreshDriverFromOrders();
+  if (typeof refreshDriverFromOrders === 'function') refreshDriverFromOrders();
 }
 
 // ==================== MAPA (OpenStreetMap + OSRM) ====================
@@ -2564,6 +2908,7 @@ function renderTracking(orderId) {
   if (title) title.textContent = 'Pedido #' + order.id;
 
   const labels = {
+    pending: 'Aguardando farmácia',
     confirmed: 'Pedido confirmado',
     preparing: 'Farmácia separando',
     out: 'Saiu para entrega',
@@ -2572,18 +2917,25 @@ function renderTracking(orderId) {
   if (st) st.textContent = labels[order.status] || order.status;
   if (sub) {
     if (order.status === 'delivered') sub.textContent = 'Pedido entregue com sucesso';
-    else if (order.status === 'out') sub.textContent = 'Chegada estimada em poucos minutos';
+    else if (order.status === 'out') sub.textContent = 'Motorista a caminho';
+    else if (order.status === 'preparing') sub.textContent = 'A farmácia está separando seus itens';
+    else if (order.status === 'confirmed') sub.textContent = 'Farmácia confirmou · logo começa a separar';
+    else if (order.status === 'pending') sub.textContent = 'Aguardando a farmácia confirmar o pedido';
     else sub.textContent = 'Acompanhe o status abaixo';
   }
 
   if (steps) {
     const order_keys = ['confirmed', 'preparing', 'out', 'delivered'];
-    const cur = order_keys.indexOf(order.status);
+    // pending = nenhum passo ativo ainda
+    let cur = order_keys.indexOf(order.status);
+    if (order.status === 'pending') cur = -1;
     steps.innerHTML = order.timeline.map((t, i) => {
       let cls = 't-step';
       if (i < cur) cls += ' done';
       if (i === cur) cls += ' active done';
-      const time = t.at ? new Date(t.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+      const time = t.at
+        ? new Date(t.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : '—';
       return `<div class="${cls}"><div class="t-dot"></div><div><strong>${t.label}</strong><span>${time}</span></div></div>`;
     }).join('');
   }
@@ -2621,8 +2973,9 @@ function renderOrdersList(mode, btn) {
   }
 
   const statusLabel = {
+    pending: 'Aguardando',
     confirmed: 'Confirmado',
-    preparing: 'Preparando',
+    preparing: 'Separando',
     out: 'A caminho',
     delivered: 'Entregue'
   };
@@ -2731,30 +3084,52 @@ function refreshPharmacyFromOrders() {
     return;
   }
 
-  const statusLabel = { confirmed: 'Novo', preparing: 'Separar', out: 'Em rota', delivered: 'Entregue' };
+  const statusLabel = {
+    pending: 'Novo',
+    confirmed: 'Confirmado',
+    preparing: 'Separado',
+    out: 'Em rota',
+    delivered: 'Entregue'
+  };
   let html = '';
-  html += orders.slice(0, 8).map(o => {
+  html += orders.slice(0, 12).map(o => {
     const items = o.items.map(i => i.name + ' ×' + i.qty).join(' · ');
+    let actionBtn = '';
+    if (o.status === 'pending') {
+      actionBtn = `<button class="btn btn-sm btn-primary" onclick="pharmacyConfirmOrder('${o.id}')"><i class="fas fa-check"></i> Confirmar pedido</button>`;
+    } else if (o.status === 'confirmed') {
+      actionBtn = `<button class="btn btn-sm btn-primary" onclick="pharmacySeparateOrder('${o.id}')"><i class="fas fa-box-open"></i> Separar</button>`;
+    } else if (o.status === 'preparing') {
+      actionBtn = `<span class="order-status done">Aguardando motorista</span>`;
+    } else if (o.status === 'out') {
+      actionBtn = `<button class="btn btn-sm btn-outline" onclick="openTracking('${o.id}')">Em rota</button>`;
+    } else {
+      actionBtn = `<button class="btn btn-sm btn-outline" onclick="openTracking('${o.id}')">Ver</button>`;
+    }
     return `<div class="order-card">
       <div class="order-header">
         <span class="order-id">#${o.id}</span>
         <span class="order-status active">${statusLabel[o.status] || o.status}</span>
       </div>
       <div class="order-items">${items}</div>
-      <div class="order-footer">
+      <div class="order-footer" style="gap:8px;flex-wrap:wrap">
         <span>${o.customerName || 'Cliente'}</span>
-        ${o.status === 'confirmed' || o.status === 'preparing'
-          ? `<button class="btn btn-sm btn-primary" onclick="pharmacyConfirmOrder('${o.id}')">Confirmar</button>`
-          : `<button class="btn btn-sm btn-outline" onclick="openTracking('${o.id}')">Ver</button>`}
+        ${actionBtn}
       </div>
     </div>`;
   }).join('');
   container.innerHTML = html;
 }
 
+/** Farmácia: confirma o pedido (cliente vê "Pedido confirmado") */
 function pharmacyConfirmOrder(id) {
+  advanceOrderStatus(id, 'confirmed');
+  refreshPharmacyFromOrders();
+}
+
+/** Farmácia: separa os itens (cliente vê "Farmácia separando") */
+function pharmacySeparateOrder(id) {
   advanceOrderStatus(id, 'preparing');
-  setTimeout(() => advanceOrderStatus(id, 'out'), 3000);
   refreshPharmacyFromOrders();
 }
 
@@ -2764,7 +3139,7 @@ async function refreshDriverFromOrders() {
   const optEl = document.getElementById('driver-route-opt');
 
   const out = getOrders().filter(o => o.status === 'out');
-  const queue = getOrders().filter(o => o.status === 'preparing' || o.status === 'confirmed');
+  const queue = getOrders().filter(o => o.status === 'preparing');
   const deliveredToday = getOrders().filter(o => {
     if (o.status !== 'delivered') return false;
     const d = new Date(o.createdAt);
@@ -2855,7 +3230,7 @@ async function refreshDriverFromOrders() {
           return `<div class="order-card">
             <div class="order-header">
               <span class="order-id">#${o.id}${nextBadge}</span>
-              <span class="order-status">${o.status === 'preparing' ? 'Pronto' : 'Aguardando'}</span>
+              <span class="order-status done">Pronto p/ entrega</span>
             </div>
             <div class="order-items">${items}</div>
             <div style="font-size:13px;color:var(--gray);margin:8px 0">
@@ -2914,7 +3289,7 @@ async function driverConfirmDelivered(orderId) {
   advanceOrderStatus(orderId, 'delivered');
 
   // Calcula próxima mais próxima
-  const queue = getOrders().filter(o => o.status === 'preparing' || o.status === 'confirmed');
+  const queue = getOrders().filter(o => o.status === 'preparing');
   let nextId = null;
   let nextDist = Infinity;
 
@@ -3033,6 +3408,8 @@ document.addEventListener('DOMContentLoaded', () => {
   updateFirstPurchaseUI();
   updateBiometricButton();
   updateProfileUI();
+  updateNotifBadge();
+  registerServiceWorker();
   try {
     ensurePharmacyCatalog();
     renderCustomerCatalog();
@@ -3047,5 +3424,29 @@ document.addEventListener('DOMContentLoaded', () => {
       const input = opt.querySelector('input');
       if (input) input.checked = true;
     });
+  });
+
+  // Clique em notificação do service worker
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+        const orderId = event.data.data && event.data.data.orderId;
+        if (orderId) openTracking(orderId);
+        else showScreen('notifications');
+      }
+    });
+  }
+
+  // Sincroniza entre abas via localStorage
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'farmgo_orders') {
+      if (currentTrackId) renderTracking(currentTrackId);
+      if (document.getElementById('orders')?.classList.contains('active')) {
+        renderOrdersList(ordersListMode || 'active');
+      }
+      refreshPharmacyFromOrders();
+      if (typeof refreshDriverFromOrders === 'function') refreshDriverFromOrders();
+    }
+    if (e.key === NOTIF_KEY) updateNotifBadge();
   });
 });
