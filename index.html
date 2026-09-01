@@ -346,9 +346,15 @@
           <i class="fas fa-pills"></i>
           <span>FarmGo</span>
         </div>
-        <button class="icon-btn" onclick="showScreen('profile')">
-          <i class="fas fa-user-circle"></i>
-        </button>
+        <div style="display:flex;gap:4px;align-items:center">
+          <button class="icon-btn" onclick="showScreen('notifications')" title="Notificações" style="position:relative">
+            <i class="fas fa-bell"></i>
+            <span id="notif-badge" class="notif-badge" style="display:none">0</span>
+          </button>
+          <button class="icon-btn" onclick="showScreen('profile')">
+            <i class="fas fa-user-circle"></i>
+          </button>
+        </div>
       </div>
       <div class="search-bar" onclick="showScreen('search')">
         <i class="fas fa-search"></i>
@@ -1099,11 +1105,11 @@
     </main>
   </div>
 
-  <!-- PROFILE NOTIFS -->
+  <!-- PROFILE NOTIFS (preferências) -->
   <div id="profile-notifs" class="screen app-screen">
     <header class="app-header simple">
       <button class="icon-btn" onclick="showScreen('profile')"><i class="fas fa-arrow-left"></i></button>
-      <h2>Notificações</h2>
+      <h2>Preferências</h2>
       <div style="width:40px"></div>
     </header>
     <main class="app-content">
@@ -1115,9 +1121,32 @@
         <span><i class="fas fa-tag"></i> Promoções e cupons</span>
         <input type="checkbox" id="notif-promo" checked onchange="saveNotifPrefs()">
       </label>
+      <label class="menu-item" style="cursor:pointer">
+        <span><i class="fas fa-mobile-alt"></i> Notificações do sistema</span>
+        <input type="checkbox" id="notif-push" checked onchange="saveNotifPrefs()">
+      </label>
+      <button class="btn btn-outline btn-block" style="margin-top:16px" onclick="requestPushPermission()">
+        Ativar alertas do navegador
+      </button>
       <p id="notif-msg" class="form-success" style="display:none;margin-top:12px"></p>
+      <p id="notif-perm-status" style="font-size:12px;color:var(--gray);margin-top:10px"></p>
     </main>
   </div>
+
+  <!-- CENTRO DE NOTIFICAÇÕES -->
+  <div id="notifications" class="screen app-screen">
+    <header class="app-header simple">
+      <button class="icon-btn" onclick="showScreen('home')"><i class="fas fa-arrow-left"></i></button>
+      <h2>Notificações</h2>
+      <button class="icon-btn" onclick="clearAllNotifications()" title="Limpar"><i class="fas fa-trash-alt"></i></button>
+    </header>
+    <main class="app-content">
+      <div id="notifications-list"></div>
+    </main>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- PROFILE HELP -->
   <div id="profile-help" class="screen app-screen">
