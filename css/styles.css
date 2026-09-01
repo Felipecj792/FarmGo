@@ -1939,3 +1939,131 @@ body {
 .landing-header {
   position: sticky;
 }
+
+/* ===== Notificações em tempo real ===== */
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #EF4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.toast-container {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  width: min(420px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  background: #111827;
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  animation: toastIn .28s ease;
+  cursor: pointer;
+}
+
+.toast.out {
+  animation: toastOut .25s ease forwards;
+}
+
+.toast-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #F97316;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.toast-body strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.toast-body span {
+  font-size: 12px;
+  opacity: .85;
+  line-height: 1.35;
+}
+
+.notif-item {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--gray-border);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.notif-item.unread {
+  border-color: #FDBA74;
+  background: #FFF7ED;
+}
+
+.notif-item-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #FFEDD5;
+  color: #F97316;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notif-item strong {
+  display: block;
+  font-size: 14px;
+}
+
+.notif-item p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--gray);
+}
+
+.notif-item time {
+  font-size: 11px;
+  color: var(--gray);
+  margin-top: 6px;
+  display: block;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toastOut {
+  to { opacity: 0; transform: translateY(-8px); }
+}
